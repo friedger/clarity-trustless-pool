@@ -118,7 +118,7 @@ describe("multi pool", () => {
     block = simnet.mineBlock([delegateStackStx(wallet_1, wallet_2)]);
     expect(block.length).toBe(1);
     expect(block[0].result).toBeErr(Cl.uint(500)); // too early
-    expect(simnet.blockHeight).toBe(CYCLE + HALF_CYCLE + 2);
+    expect(simnet.blockHeight).toBe(CYCLE + HALF_CYCLE + 3);
 
     // extend to cycle 2
     block = simnet.mineBlock([delegateStackStx(wallet_1, wallet_2)]);

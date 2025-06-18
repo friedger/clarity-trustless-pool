@@ -29,7 +29,7 @@ export function delegateStx(amount: number, user: string) {
   return tx.callPublicFn(
     POX4_SELF_SERVICE_MULTI_CONTRACT_NAME,
     "delegate-stx",
-    [Cl.uint(amount)],
+    [Cl.uint(amount), Cl.bufferFromHex("")],
     user
   );
 }
