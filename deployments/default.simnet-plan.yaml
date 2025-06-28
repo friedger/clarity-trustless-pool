@@ -87,4 +87,14 @@ plan:
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/payout-self-service-sbtc.clar
             clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: payout-self-service-sbtc_test
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/tests/payout-self-service-sbtc_test.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: pox4-self-service-multi_flow_test
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/tests/pox4-self-service-multi_flow_test.clar
+            clarity-version: 3
       epoch: "3.1"

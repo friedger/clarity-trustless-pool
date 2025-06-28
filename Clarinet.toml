@@ -5,11 +5,23 @@ authors = []
 telemetry = false
 cache_dir = "./.cache"
 
-[[project.requirements]]
-    contract_id = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token"
+requirements = [
+    {contract_id = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token"},
+    {contract_id = "SP000000000000000000002Q6VF78.pox-4"},
+]
 
 [contracts.payout-self-service-sbtc]
 path = 'contracts/payout-self-service-sbtc.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.payout-self-service-sbtc_test]
+path = 'contracts/tests/payout-self-service-sbtc_test.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.pox4-self-service-multi_flow_test]
+path = 'contracts/tests/pox4-self-service-multi_flow_test.clar'
 clarity_version = 3
 epoch = 3.1
 
@@ -17,6 +29,7 @@ epoch = 3.1
 path = 'contracts/pox4-self-service-multi.clar'
 clarity_version = 3
 epoch = 3.1
+
 
 [repl.analysis]
 passes = ["check_checker"]

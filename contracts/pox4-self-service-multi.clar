@@ -39,7 +39,7 @@
   principal
   bool
 )
-(map-set reward-admins tx-sender true) 
+(map-set reward-admins tx-sender true)
 (define-data-var active bool false)
 (define-data-var pool-pox-address {
   hashbytes: (buff 32),
