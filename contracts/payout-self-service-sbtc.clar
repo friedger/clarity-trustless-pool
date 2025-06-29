@@ -152,9 +152,12 @@
     ;; rewards can only be added after the end of the reward phase of the cycle
     (asserts!
       (> burn-block-height
-        (- (+ (get first-burnchain-block-height pox-info)
-          (* (get reward-cycle-length pox-info) (+ cycle u1))
-        ) (get prepare-cycle-length pox-info)))
+        (-
+          (+ (get first-burnchain-block-height pox-info)
+            (* (get reward-cycle-length pox-info) (+ cycle u1))
+          )
+          (get prepare-cycle-length pox-info)
+        ))
       err-too-early
     )
     ;; amount must be less or equal than the unallocated balance
@@ -302,19 +305,24 @@
   (/ (* total-reward-amount-sbtc user-stacked) total-stacked)
 )
 
-(define-public (get-total-stacked (cycle-id uint) (reward-set-index uint))  
-    (ok (+ u250000000000000 u500000000000000))
+(define-public (get-total-stacked
+    (cycle-id uint)
+    (reward-set-index uint)
+  )
+  (ok (+ u250000000000000 u500000000000000))
 )
 
-
-(define-public (get-total-stacked-testnet (cycle-id uint) (reward-set-index uint))  
-    (ok (get total-ustx
-      (unwrap!
-        (contract-call? 'ST000000000000000000002AMW42H.pox-4
-          get-reward-set-pox-address cycle-id reward-set-index
-        )
-        err-not-found
-      )))
+(define-public (get-total-stacked-testnet
+    (cycle-id uint)
+    (reward-set-index uint)
+  )
+  (ok (get total-ustx
+    (unwrap!
+      (contract-call? 'ST000000000000000000002AMW42H.pox-4
+        get-reward-set-pox-address cycle-id reward-set-index
+      )
+      err-not-found
+    )))
 )
 
 (define-read-only (is-rewards-admin)

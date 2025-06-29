@@ -26,15 +26,18 @@ The trustless pool should workd according to following rules:
 1. Any user can join the pool with at a minimum of 0,0001 base points (~50 STX as of June 2025) of the total locked amount in the current cycle.
 2. The pox reward address is defined as the sbtc deposit address of a deposit vault contract.
 3. The signer node registers a generic signature for the pox reward address allowing to call commit without signature.
-4. Any user can extend the stacking period for other users after half the cycle has passed (only 1 week to revoke delegation for users, can be done by bots)
-5. Any user can transfer the stacking rewards from deposit vault to the payout contract during the prepare phase (only first tx would succeed, can be done by bots)
+4. Any user can extend the stacking period for pool members after half the cycle has passed (only 1 week to revoke delegation for users, can be done by bots)
+5. Any user can transfer the stacking rewards from deposit vault to the payout contract at any time if the balance is more than the minimum for intermediate payouts (tbd) or during the prepare phase (can be done by bots)
 6. Any user can transfer the portion of the rewards assigned to a user from the payout contract to the user. (can be done by bots)
 7. Failed sbtc deposits are send to a trusted rewards admin.
 
 Optional rules:
 
-1. Trusted rewards admins can black list payouts for certain users.
+1. Trusted rewards admin can black list payouts for certain users.
 2. Users can define a payout address to receive rewards different from the stacking address.
+3. Trusted rewards admin can change the minimum for intermediate payouts.
+4. Trusted rewards admin can manipulate payouts in emergency.
+5. Trusted rewards admin can withdraw assets other than sBTC from the contract (save wrongly directed assets).
 
 ## Architecture Overview
 

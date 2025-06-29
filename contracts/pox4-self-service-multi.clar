@@ -148,14 +148,16 @@
 
 (define-private (lock-delegated-stx-fold
     (user principal)
-    (result (list 30
+    (result (list
+      30
       (response {
         lock-amount: uint,
         stacker: principal,
         unlock-burn-height: uint,
       }
         uint
-      )))
+      )
+    ))
   )
   (let ((stack-result (lock-delegated-stx user)))
     (unwrap-panic (as-max-len? (append result stack-result) u30))
@@ -329,27 +331,33 @@
       stack-aggregation-commit-indexed (var-get pool-pox-address) reward-cycle
       signer-sig signer-key max-amount auth-id
     ))
-    index (begin 
-      (map-set pox-addr-indices reward-cycle index)
-      (map-set last-aggregation reward-cycle burn-block-height)
-      (ok index)
-    )
-    error (err error)
+      index (begin
+        (map-set pox-addr-indices reward-cycle index)
+        (map-set last-aggregation reward-cycle burn-block-height)
+        (ok index)
+      )
+      error (err error)
     )
   )
 )
 
 (define-public (recover
-(current-cycle uint)
+    (current-cycle uint)
     (signer-sig (optional (buff 65)))
     (signer-key (buff 33))
     (max-amount uint)
     (auth-id uint)
   )
   (let ((reward-cycle (+ u1 current-cycle)))
-  (secp256k1-recover?
-            (contract-call? 'ST000000000000000000002AMW42H.pox-4 get-signer-key-message-hash (var-get pool-pox-address) reward-cycle "agg-commit" u1 max-amount auth-id)
-            (default-to 0x signer-sig))))
+    (secp256k1-recover?
+      (contract-call? 'ST000000000000000000002AMW42H.pox-4
+        get-signer-key-message-hash (var-get pool-pox-address) reward-cycle
+        "agg-commit" u1 max-amount auth-id
+      )
+      (default-to 0x signer-sig)
+    )
+  )
+)
 
 ;;
 ;; Admin functions
