@@ -1,10 +1,9 @@
-
 {
   "compilerOptions": {
     "target": "ESNext",
     "useDefineForClassFields": true,
     "module": "ESNext",
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "dom"],
     "skipLibCheck": true,
 
     "moduleResolution": "bundler",

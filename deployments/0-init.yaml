@@ -10,16 +10,35 @@ plan:
         - contract-call:
             contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            method: set-pox-address-active
+            method: set-pool-pox-address-active
+            # wallet 1
             parameters:
-              - {
-                  hashbytes: 0x6d78de7b0625dfbfc16c3a8a5735f6dc3dc3f2ce,
-                  version: 0x00,
-                }
+              - "{
+                hashbytes: 0x7321b74e2b6a7e949e6c4ad313035b1665095017,
+                version: 0x00,
+                }"
             cost: 10000
         - contract-call:
             contract-id: ST000000000000000000002AMW42H.pox-4
+            expected-sender: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+            method: allow-contract-caller
+            parameters:
+              - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi"
+              - none
+            cost: 10000
+        - contract-call:
+            contract-id: ST000000000000000000002AMW42H.pox-4
+            # alice
             expected-sender: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+            method: allow-contract-caller
+            parameters:
+              - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi"
+              - none
+            cost: 10000
+        - contract-call:
+            contract-id: ST000000000000000000002AMW42H.pox-4
+            # bob
+            expected-sender: ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
             method: allow-contract-caller
             parameters:
               - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi"

@@ -2,8 +2,13 @@ import {
   pox4SignatureMessage,
   poxAddressToTuple,
   StackingClient,
+  verifyPox4SignatureHash,
 } from "@stacks/stacking";
-import { cvToString, privateKeyToPublic } from "@stacks/transactions";
+import {
+  cvToString,
+  privateKeyToPublic,
+  signStructuredData,
+} from "@stacks/transactions";
 
 // account 1
 const signerPrivateKey =
@@ -30,10 +35,38 @@ const createSignature = (rewardCycle: number): string => {
     signerPrivateKey,
   } as any;
   const signature = client.signPoxSignature(data);
-  console.log("sig", pox4SignatureMessage({ ...data, network: "testnet" }));
+  const { message, domain } = pox4SignatureMessage({
+    ...data,
+    network: "testnet",
+  });
+  const sigData = signStructuredData({
+    message,
+    domain,
+    privateKey: signerPrivateKey,
+  });
+
+  console.log(`Signature:, 0x${signature}`);
+  console.log(`Public Key: 0x${signerPubKey}`);
+
+  console.log(
+    "valid signature",
+    verifyPox4SignatureHash({
+      ...data,
+      network: "testnet",
+      publicKey: signerPubKey,
+      signature: signature,
+    })
+  );
+  console.log(
+    "valid signature 2",
+    verifyPox4SignatureHash({
+      ...data,
+      network: "testnet",
+      publicKey: signerPubKey,
+      signature: sigData,
+    })
+  );
   return signature;
 };
 
-const signature = createSignature(1);
-console.log(`Signature:, 0x${signature}`);
-console.log(`Public Key: 0x${signerPubKey}`);
+const signature = createSignature(2);

@@ -140,20 +140,21 @@
 (define-private (add-rewards
     (amount uint)
     (cycle uint)
+    (reward-set-index uint)
   )
   (let (
       (reserved-balance (var-get reward-balance))
       (new-reserved-balance (+ reserved-balance amount))
       (balance (as-contract (get-balance tx-sender)))
       (reward-id (+ (var-get last-reward-id) u1))
-      (total-stacked (unwrap! (get-total-stacked cycle) err-not-found))
+      (total-stacked (unwrap! (get-total-stacked cycle reward-set-index) err-not-found))
     )
-    ;; rewards can only be added after the end of the cycle
+    ;; rewards can only be added after the end of the reward phase of the cycle
     (asserts!
       (> burn-block-height
-        (+ (get first-burnchain-block-height pox-info)
+        (- (+ (get first-burnchain-block-height pox-info)
           (* (get reward-cycle-length pox-info) (+ cycle u1))
-        ))
+        ) (get prepare-cycle-length pox-info)))
       err-too-early
     )
     ;; amount must be less or equal than the unallocated balance
@@ -227,11 +228,12 @@
 (define-public (deposit-rewards
     (amount uint)
     (cycle uint)
+    (reward-set-index uint)
   )
   (begin
     (asserts! (is-rewards-admin) err-forbidden)
     (try! (transfer-memo amount tx-sender (as-contract tx-sender) 0x6465706f736974))
-    (add-rewards amount cycle)
+    (add-rewards amount cycle reward-set-index)
   )
 )
 
@@ -250,10 +252,11 @@
 (define-public (allocate-funds
     (amount uint)
     (cycle uint)
+    (reward-set-index uint)
   )
   (begin
     (asserts! (is-rewards-admin) err-forbidden)
-    (add-rewards amount cycle)
+    (add-rewards amount cycle reward-set-index)
   )
 )
 
@@ -280,10 +283,14 @@
     (user principal)
     (id-header-hash (buff 32))
   )
-  ;;  (get locked (at-block id-header-hash (stx-account user))))
-  (if (is-eq user 'ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5)
-    u1000000000000
-    u0
+  ;; (get locked (at-block id-header-hash (stx-account user))))
+  ;; DEBUG MODE
+  (if (is-eq user 'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG)
+    u250000000000000
+    (if (is-eq user 'ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC)
+      u500000000000000
+      u0
+    )
   )
 )
 
@@ -295,11 +302,12 @@
   (/ (* total-reward-amount-sbtc user-stacked) total-stacked)
 )
 
-(define-public (get-total-stacked (cycle-id uint))
-  (let ((reward-set-index (unwrap!
-      (contract-call? .pox4-self-service-multi get-pox-addr-index cycle-id)
-      err-not-found
-    )))
+(define-public (get-total-stacked (cycle-id uint) (reward-set-index uint))  
+    (ok (+ u250000000000000 u500000000000000))
+)
+
+
+(define-public (get-total-stacked-testnet (cycle-id uint) (reward-set-index uint))  
     (ok (get total-ustx
       (unwrap!
         (contract-call? 'ST000000000000000000002AMW42H.pox-4
@@ -307,7 +315,6 @@
         )
         err-not-found
       )))
-  )
 )
 
 (define-read-only (is-rewards-admin)

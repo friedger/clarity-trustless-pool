@@ -15,6 +15,18 @@ path = 'contracts/payout-self-service-sbtc.clar'
 clarity_version = 3
 epoch = 3.1
 
+[contracts.pox4-self-service-multi]
+path = 'contracts/pox4-self-service-multi.clar'
+clarity_version = 3
+epoch = 3.1
+
+
+[contracts.deposit-vault]
+path = 'contracts/deposit-vault.clar'
+clarity_version = 3
+epoch = 3.1
+
+
 [contracts.payout-self-service-sbtc_test]
 path = 'contracts/tests/payout-self-service-sbtc_test.clar'
 clarity_version = 3
@@ -24,12 +36,6 @@ epoch = 3.1
 path = 'contracts/tests/pox4-self-service-multi_flow_test.clar'
 clarity_version = 3
 epoch = 3.1
-
-[contracts.pox4-self-service-multi]
-path = 'contracts/pox4-self-service-multi.clar'
-clarity_version = 3
-epoch = 3.1
-
 
 [repl.analysis]
 passes = ["check_checker"]

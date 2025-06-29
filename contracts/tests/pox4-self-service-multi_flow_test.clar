@@ -8,7 +8,7 @@
 (define-public (test-delegation)
   (begin
     ;; @caller deployer
-    (unwrap! (contract-call? .pox4-self-service-multi set-pool-pox-address-active {hashbytes: 0x1234567890123456789012345678901234567890, version: 0x01}) (err u1000))
+    (unwrap! (contract-call? .pox4-self-service-multi set-pool-pox-address-active {version: 0x00, hashbytes: 0x7321b74e2b6a7e949e6c4ad313035b1665095017}) (err u1000))
     ;; @caller wallet_1
     (unwrap! (contract-call? 'ST000000000000000000002AMW42H.pox-4 allow-contract-caller .pox4-self-service-multi none) (err u2000))
     ;; @caller wallet_1
