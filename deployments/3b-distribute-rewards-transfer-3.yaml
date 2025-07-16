@@ -21,12 +21,11 @@ plan:
             cost: 10000
         - contract-call:
             # wallet 0
-            contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.payout-self-service-sbtc
+            contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.deposit-vault
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            method: allocate-funds
+            method: transfer
             parameters:
-              - u100000000
-              - u3
+              - u0
             cost: 10000
         - contract-call:
             # wallet 2
@@ -35,7 +34,7 @@ plan:
             method: distribute-rewards
             parameters:
               - "'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG"
-              - u3
+              - u0
             cost: 10000
         - contract-call:
             # wallet 2
@@ -44,5 +43,5 @@ plan:
             method: distribute-rewards-many
             parameters:
               - "(list 'ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC)"
-              - u3
+              - u0
             cost: 10000

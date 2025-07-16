@@ -26,7 +26,7 @@
 
 (define-map distributions
   {
-    cycle: uint,
+    reward-id: uint,
     user: principal,
   }
   uint
@@ -106,9 +106,9 @@
     ;; distribute up to unspent rewards
     (let (
         (reward (var-get ctx-reward))
-        (cycle (get cycle reward))
+        (reward-id (get reward-id reward))
         (received-rewards (map-get? distributions {
-          cycle: cycle,
+          reward-id: reward-id,
           user: user,
         }))
         (id-header-hash (get id-header-hash reward))
@@ -127,6 +127,12 @@
         (begin
           (try! (as-contract (transfer-memo share-sbtc tx-sender user 0x72657761726473)))
           (var-set reward-balance (- (var-get reward-balance) share-sbtc))
+          (map-set distributions {
+            reward-id: reward-id,
+            user: user,
+          }
+            share-sbtc
+          )
           (ok (- unspent share-sbtc))
         )
         (ok unspent)
@@ -282,7 +288,17 @@
 ;;  Read-only functions
 ;;
 
+;; TODO use mainnet implementation
+;; for get-user-stacked
+
 (define-read-only (get-user-stacked
+    (user principal)
+    (id-header-hash (buff 32))
+  )
+  (get-user-stacked-dummy user id-header-hash)
+)
+
+(define-read-only (get-user-stacked-dummy
     (user principal)
     (id-header-hash (buff 32))
   )
@@ -297,6 +313,13 @@
   )
 )
 
+(define-read-only (get-user-stacked-testnet
+    (user principal)
+    (id-header-hash (buff 32))
+  )
+  (get locked (at-block id-header-hash (stx-account user)))
+)
+
 (define-read-only (calculate-share
     (total-reward-amount-sbtc uint)
     (user-stacked uint)
@@ -305,7 +328,18 @@
   (/ (* total-reward-amount-sbtc user-stacked) total-stacked)
 )
 
+;;
+;; TODO use mainnet implementation
+;; for get-total-stacked
+;;
 (define-public (get-total-stacked
+    (cycle-id uint)
+    (reward-set-index uint)
+  )
+  (get-total-stacked-dummy cycle-id reward-set-index)
+)
+
+(define-public (get-total-stacked-dummy
     (cycle-id uint)
     (reward-set-index uint)
   )
@@ -346,11 +380,11 @@
 )
 
 (define-read-only (get-distribution
-    (cycle uint)
+    (reward-id uint)
     (user principal)
   )
   (map-get? distributions {
-    cycle: cycle,
+    reward-id: reward-id,
     user: user,
   })
 )

@@ -189,11 +189,11 @@ describe("payout", () => {
     expectOkTrue(block, "sbtc-token", "transfer", 1);
     expectOk(block, "deposit-vault", "transfer", 2);
     expectOk(block, "payout-self-service-sbtc", "distribute-rewards", 3);
+    expectOk(block, "", "", 4);
     expect(block[2].events[0].event).toBe("ft_transfer_event");
     expect(block[2].events[0].data.amount).toBe("100000000");
     expect(block[3].events[0].event).toBe("ft_transfer_event");
     expect(block[3].events[0].data.amount).toBe("33333333"); // alice
-    expect(block[4].events[0].event).toBe("ft_transfer_event");
-    expect(block[4].events[0].data.amount).toBe("33333333"); // alice, ups
+    expect(block[4].events.length).toBe(0); // no sbtc transferred for second call
   });
 });

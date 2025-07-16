@@ -38,15 +38,22 @@ plan:
         - contract-publish:
             contract-name: pox4-self-service-multi
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            cost: 168780
+            cost: 169260
             path: contracts/pox4-self-service-multi.clar
             anchor-block-only: true
             clarity-version: 3
         - contract-publish:
             contract-name: payout-self-service-sbtc
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            cost: 88600
+            cost: 92200
             path: contracts/payout-self-service-sbtc.clar
+            anchor-block-only: true
+            clarity-version: 3
+        - contract-publish:
+            contract-name: deposit-vault
+            expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            cost: 19100
+            path: contracts/deposit-vault.clar
             anchor-block-only: true
             clarity-version: 3
         - contract-publish:
@@ -59,7 +66,7 @@ plan:
         - contract-publish:
             contract-name: pox4-self-service-multi_flow_test
             expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            cost: 20050
+            cost: 19550
             path: contracts/tests/pox4-self-service-multi_flow_test.clar
             anchor-block-only: true
             clarity-version: 3
