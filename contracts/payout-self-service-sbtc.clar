@@ -146,14 +146,13 @@
 (define-private (add-rewards
     (amount uint)
     (cycle uint)
-    (reward-set-index uint)
   )
   (let (
       (reserved-balance (var-get reward-balance))
       (new-reserved-balance (+ reserved-balance amount))
       (balance (as-contract (get-balance tx-sender)))
       (reward-id (+ (var-get last-reward-id) u1))
-      (total-stacked (unwrap! (get-total-stacked cycle reward-set-index) err-not-found))
+      (total-stacked (unwrap! (get-total-stacked cycle) err-not-found))
     )
     ;; rewards can only be added after the end of the reward phase of the cycle
     (asserts!
@@ -237,12 +236,11 @@
 (define-public (deposit-rewards
     (amount uint)
     (cycle uint)
-    (reward-set-index uint)
   )
   (begin
     (asserts! (is-rewards-admin) err-forbidden)
     (try! (transfer-memo amount tx-sender (as-contract tx-sender) 0x6465706f736974))
-    (add-rewards amount cycle reward-set-index)
+    (add-rewards amount cycle)
   )
 )
 
@@ -261,11 +259,10 @@
 (define-public (allocate-funds
     (amount uint)
     (cycle uint)
-    (reward-set-index uint)
   )
   (begin
     (asserts! (is-rewards-admin) err-forbidden)
-    (add-rewards amount cycle reward-set-index)
+    (add-rewards amount cycle)
   )
 )
 
@@ -333,30 +330,21 @@
 ;; for get-total-stacked
 ;;
 (define-public (get-total-stacked
-    (cycle-id uint)
-    (reward-set-index uint)
+    (cycle-id uint)    
   )
-  (get-total-stacked-dummy cycle-id reward-set-index)
+  (get-total-stacked-dummy cycle-id)
 )
 
 (define-public (get-total-stacked-dummy
     (cycle-id uint)
-    (reward-set-index uint)
   )
   (ok (+ u250000000000000 u500000000000000))
 )
 
 (define-public (get-total-stacked-testnet
     (cycle-id uint)
-    (reward-set-index uint)
   )
-  (ok (get total-ustx
-    (unwrap!
-      (contract-call? 'ST000000000000000000002AMW42H.pox-4
-        get-reward-set-pox-address cycle-id reward-set-index
-      )
-      err-not-found
-    )))
+  (ok (contract-call? .pox4-self-service-multi get-total-stacked cycle-id))
 )
 
 (define-read-only (is-rewards-admin)

@@ -56,7 +56,9 @@
 
 (define-constant err-unauthorized (err u401))
 (define-constant err-forbidden (err u403))
+(define-constant err-not-found (err u404))
 (define-constant err-too-early (err u500))
+(define-constant err-too-many-signers (err u501))
 (define-constant err-decrease-forbidden (err u503))
 (define-constant err-pox-address-deactivated (err u504))
 ;; Error code 3 is used by pox-4 contract for already stacking errors
@@ -84,7 +86,7 @@
 
 (define-map pox-addr-indices
   uint
-  uint
+  (list 10 uint)
 )
 
 (define-read-only (get-pox-addr-index (cycle uint))
@@ -331,8 +333,8 @@
       stack-aggregation-commit-indexed (var-get pool-pox-address) reward-cycle
       signer-sig signer-key max-amount auth-id
     ))
-      index (begin
-        (map-set pox-addr-indices reward-cycle index)
+      index (let ((reward-index-set (default-to (list) (map-get? pox-addr-indices reward-cycle))))
+        (map-set pox-addr-indices reward-cycle (unwrap! (as-max-len? (append reward-index-set index) u10) (err 999)))
         (map-set last-aggregation reward-cycle burn-block-height)
         (ok index)
       )
@@ -471,6 +473,25 @@
 (define-read-only (can-lock-now (cycle uint))
   (> burn-block-height (+ (reward-cycle-to-burn-height cycle) half-cycle-length))
 )
+
+(define-read-only (get-total-stacked (cycle-id uint))  
+  (fold get-total-stacked-inner 
+    (default-to (list) (map-get? pox-addr-indices cycle-id))
+    {cycle-id: cycle-id, total-stacked: u0})
+)
+
+(define-read-only (get-total-stacked-inner (reward-set-index uint) 
+  (result {cycle-id: uint, total-stacked: uint}))
+  (let ((cycle-id (get cycle-id result)) 
+      (total-stacked 
+    (match
+      (contract-call? 'ST000000000000000000002AMW42H.pox-4
+        get-reward-set-pox-address (get cycle-id result) reward-set-index
+      )      
+   info (get total-ustx info)
+   u0)))
+   {cycle-id: cycle-id, total-stacked: total-stacked}
+))
 
 ;; Returns minimum
 (define-private (min

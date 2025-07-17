@@ -25,7 +25,7 @@
   )
 )
 
-(define-public (transfer (reward-set-index uint))
+(define-public (transfer)
   (let (
       (block-height-rebased (- burn-block-height (get first-burnchain-block-height pox-info)))
       (blocks-in-cycle (mod block-height-rebased reward-cycle-length))
@@ -42,7 +42,7 @@
       err-too-early
     )
     (as-contract (contract-call? .payout-self-service-sbtc deposit-rewards balance
-      current-reward-cycle reward-set-index
+      current-reward-cycle
     ))
   )
 )

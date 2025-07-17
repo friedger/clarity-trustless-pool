@@ -86,7 +86,7 @@ describe("payout", () => {
       tx.callPublicFn(
         "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.payout-self-service-sbtc",
         "allocate-funds",
-        [uintCV(100_000_000), uintCV(1), uintCV(0)],
+        [uintCV(100_000_000), uintCV(1)],
         deployer
       ),
       tx.callPublicFn(
@@ -163,7 +163,7 @@ describe("payout", () => {
       tx.callPublicFn(
         "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.deposit-vault",
         "transfer",
-        [uintCV(0)], //reward set index
+        [],
         bob
       ),
       // 3: distribute rewards
