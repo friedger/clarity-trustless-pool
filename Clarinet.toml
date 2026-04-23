@@ -23,6 +23,11 @@ epoch ="latest"
 
 ### tests
 
+[contracts.enroll-test]
+path = 'contracts/tests/enroll-test.clar'
+clarity_version = 5
+epoch ="latest"
+
 [contracts.payout-self-service-sbtc_test]
 path = 'contracts/tests/payout-self-service-sbtc_test.clar'
 clarity_version = 5

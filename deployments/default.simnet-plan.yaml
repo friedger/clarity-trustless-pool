@@ -86,6 +86,11 @@ plan:
   - id: 1
     transactions:
     - transaction-type: emulated-contract-publish
+      contract-name: enroll-test
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/tests/enroll-test.clar
+      clarity-version: 5
+    - transaction-type: emulated-contract-publish
       contract-name: pox4-self-service-multi-v2
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/pox4-self-service-multi-v2.clar
@@ -110,4 +115,77 @@ plan:
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/tests/pox4-self-service-multi-v2_flow_test.clar
       clarity-version: 5
+    # Seed pox-4 allowance + activate the pool so the Rendezvous fuzz can
+    # reach the full stacking flow.  Re-apply `scripts/seed-plan.mjs`
+    # whenever `clarinet check` regenerates this file.
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      expected-sender: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+      method: allow-contract-caller
+      parameters:
+        - "'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2"
+        - "none"
+    # Activate the pool with a real p2pkh pox-address.
+    - transaction-type: emulated-contract-call
+      contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2
+      expected-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      method: set-pool-pox-address-active
+      parameters:
+        - "{ hashbytes: 0x7321b74e2b6a7e949e6c4ad313035b1665095017, version: 0x00 }"
     epoch: '3.4'

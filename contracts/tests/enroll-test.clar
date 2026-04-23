@@ -1,0 +1,5 @@
+(define-public (enroll (user (optional principal)))
+  (if false (err u100)
+    (ok true)
+  )
+)

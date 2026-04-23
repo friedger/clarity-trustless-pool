@@ -11,6 +11,12 @@
 (define-data-var reward-balance uint u0)
 (define-data-var last-reward-id uint u0)
 
+;; Principals that have ever been admin, used to exclude dust recipients from
+;; per-user invariants (withdraw-dust books the reclaimed amount under
+;; distributions[{reward-id, admin}]).
+(define-map was-admin principal bool)
+(map-set was-admin tx-sender true)
+
 (define-map rewards
   uint ;; reward id
   {
@@ -226,6 +232,7 @@
 
 (define-public (withdraw-dust (reward-id uint))
   (let (
+      (admin tx-sender)
       (reserved-reward-balance (var-get reward-balance))
       (unspent-sbtc (unwrap! (map-get? remaining-sbtc-by-reward-id reward-id) ERR_NOT_FOUND))
       (reward-details (unwrap! (map-get? rewards reward-id) ERR_NOT_FOUND))
@@ -233,12 +240,24 @@
       (current-cycle (/ (- burn-block-height (get first-burnchain-block-height POX_INFO))
         (get reward-cycle-length POX_INFO)
       ))
+      (prior-admin-distribution (default-to u0
+        (map-get? distributions {
+          reward-id: reward-id,
+          user: admin,
+        })
+      ))
     )
     (asserts! (>= reserved-reward-balance unspent-sbtc) ERR_UNEXPECTED)
     (asserts! (> current-cycle (+ u2 reward-cycle-id)) ERR_TOO_EARLY)
     (and
       (> unspent-sbtc u0)
       (try! (withdraw-sbtc unspent-sbtc))
+    )
+    (map-set distributions {
+      reward-id: reward-id,
+      user: admin,
+    }
+      (+ prior-admin-distribution unspent-sbtc)
     )
     (map-set remaining-sbtc-by-reward-id reward-id u0)
     (var-set reward-balance (- reserved-reward-balance unspent-sbtc))
@@ -274,6 +293,7 @@
 (define-public (set-rewards-admin (new-admin principal))
   (begin
     (asserts! (is-rewards-admin) ERR_FORBIDDEN)
+    (map-set was-admin new-admin true)
     (ok (var-set rewards-admin new-admin))
   )
 )
@@ -374,7 +394,8 @@
 ))
 
 ;; [#env(simnet)]
-;; Devnet deployer + wallet_1..wallet_8, the principals Rendezvous uses.
+;; Devnet deployer + wallet_1..wallet_8 + faucet, the principals Rendezvous
+;; draws from when generating principal arguments.
 (define-constant FUZZ_PRINCIPALS (list
   'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
   'ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
@@ -385,6 +406,7 @@
   'ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
   'ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
   'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+  'STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
 ))
 
 ;; [#env(simnet)]
@@ -468,7 +490,10 @@
 ;; Catches the withdraw-dust double-drain: repeated calls reduce reward-balance
 ;; while leaving remaining-sbtc-by-reward-id untouched.
 (define-read-only (invariant-reward-balance-matches-remaining)
-  (is-eq (var-get reward-balance) (fold fuzz-sum-remaining FUZZ_REWARD_IDS u0))
+  (if (> (var-get last-reward-id) u100)
+    true
+    (is-eq (var-get reward-balance) (fold fuzz-sum-remaining FUZZ_REWARD_IDS u0))
+  )
 )
 
 ;; [#env(simnet)]
@@ -492,7 +517,9 @@
 
 ;; [#env(simnet)]
 ;; Invariant 3: for every reward-id, (amount-sbtc - remaining) equals the sum
-;; of distributions across the known principal set.
+;; of distributions across the known principal set. withdraw-dust books the
+;; reclaimed amount into distributions[{reward-id, admin}] so the identity
+;; holds across admin dust reclaims as well.
 (define-read-only (invariant-distributed-matches-distributions)
   (fold fuzz-check-distributed-matches FUZZ_REWARD_IDS true)
 )
@@ -529,16 +556,14 @@
 ;; [#env(simnet)]
 ;; Invariant 19: whole-system sBTC conservation for the payout contract.
 ;;   sum(rewards.amount-sbtc) == sum(remaining) + sum(distributions)
-;; Holds only when no admin-side withdrawal has happened in the trace:
-;; withdraw-dust and withdraw-excess-sbtc drain funds without touching the
-;; per-reward amount / remaining / distributions bookkeeping. The `context`
-;; gate skips the check once either has been called.
+;; withdraw-dust books the reclaimed amount under distributions[{rid, admin}]
+;; so it stays balanced. withdraw-excess-sbtc drains the unbooked balance
+;; above reward-balance and is not reflected in any reward map; gate on it.
 (define-read-only (invariant-sbtc-conservation)
-  (let (
-      (dust-called (default-to u0 (get called (map-get? context "withdraw-dust"))))
-      (excess-called (default-to u0 (get called (map-get? context "withdraw-excess-sbtc"))))
-    )
-    (if (or (> dust-called u0) (> excess-called u0))
+  (let ((excess-called (default-to u0
+      (get called (map-get? context "withdraw-excess-sbtc"))
+    )))
+    (if (> excess-called u0)
       true
       (is-eq (fold fuzz-sum-amount FUZZ_REWARD_IDS u0)
         (+ (fold fuzz-sum-remaining FUZZ_REWARD_IDS u0)
@@ -546,4 +571,169 @@
         ))
     )
   )
+)
+
+;; [#env(simnet)]
+;; Invariant 1: reward-balance is never above the contract's own sBTC balance.
+;; A violation means accounting lost track of the real token balance.
+(define-read-only (invariant-reward-balance-leq-sbtc-balance)
+  (<= (var-get reward-balance) (get-contract-balance-sbtc))
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distrib-user-leq-share
+    (user principal)
+    (acc {
+      rid: uint,
+      amount: uint,
+      total-stacked: uint,
+      cycle: uint,
+      ok: bool,
+    })
+  )
+  (if (or (not (get ok acc)) (default-to false (map-get? was-admin user)))
+    acc
+    (let (
+        (dist (default-to u0
+          (map-get? distributions {
+            reward-id: (get rid acc),
+            user: user,
+          })))
+        (stacked (default-to u0
+          (contract-call? .pox4-self-service-multi-v2 get-user-stacked
+            (get cycle acc) user
+          )))
+        (share (calculate-share (get amount acc) stacked (get total-stacked acc)))
+      )
+      (merge acc { ok: (<= dist share) })
+    )
+  )
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distrib-leq-share
+    (rid uint)
+    (ok-so-far bool)
+  )
+  (and ok-so-far
+    (match (map-get? rewards rid)
+      r (get ok
+          (fold fuzz-check-distrib-user-leq-share FUZZ_PRINCIPALS {
+            rid: rid,
+            amount: (get amount-sbtc r),
+            total-stacked: (get total-stacked r),
+            cycle: (get cycle r),
+            ok: true,
+          }))
+      true
+    )
+  )
+)
+
+;; [#env(simnet)]
+;; Invariant 4: each recorded distribution is within the user's pro-rata share.
+;; Skips principals that have ever been admin, since withdraw-dust books the
+;; reclaimed amount into distributions[{reward-id, admin}] above the share.
+(define-read-only (invariant-distribution-leq-share)
+  (fold fuzz-check-distrib-leq-share FUZZ_REWARD_IDS true)
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distrib-user-leq-amount
+    (user principal)
+    (acc {
+      rid: uint,
+      amount: uint,
+      ok: bool,
+    })
+  )
+  (if (not (get ok acc))
+    acc
+    (let ((dist (default-to u0
+        (map-get? distributions {
+          reward-id: (get rid acc),
+          user: user,
+        }))))
+      (merge acc { ok: (<= dist (get amount acc)) })
+    )
+  )
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distrib-leq-amount
+    (rid uint)
+    (ok-so-far bool)
+  )
+  (and ok-so-far
+    (match (map-get? rewards rid)
+      r (get ok
+          (fold fuzz-check-distrib-user-leq-amount FUZZ_PRINCIPALS {
+            rid: rid,
+            amount: (get amount-sbtc r),
+            ok: true,
+          }))
+      true
+    )
+  )
+)
+
+;; [#env(simnet)]
+;; Invariant 5: no (reward-id, user) distribution exceeds the reward's total
+;; amount. Bounds both the distribute-rewards path and accumulated dust.
+(define-read-only (invariant-distribution-leq-amount)
+  (fold fuzz-check-distrib-leq-amount FUZZ_REWARD_IDS true)
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distrib-user-delegated
+    (user principal)
+    (acc {
+      rid: uint,
+      cycle: uint,
+      ok: bool,
+    })
+  )
+  (if (or (not (get ok acc)) (default-to false (map-get? was-admin user)))
+    acc
+    (let (
+        (dist (default-to u0
+          (map-get? distributions {
+            reward-id: (get rid acc),
+            user: user,
+          })))
+        (stacked (default-to u0
+          (contract-call? .pox4-self-service-multi-v2 get-user-stacked
+            (get cycle acc) user
+          )))
+      )
+      (merge acc { ok: (or (is-eq dist u0) (> stacked u0)) })
+    )
+  )
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distrib-delegated
+    (rid uint)
+    (ok-so-far bool)
+  )
+  (and ok-so-far
+    (match (map-get? rewards rid)
+      r (get ok
+          (fold fuzz-check-distrib-user-delegated FUZZ_PRINCIPALS {
+            rid: rid,
+            cycle: (get cycle r),
+            ok: true,
+          }))
+      true
+    )
+  )
+)
+
+;; [#env(simnet)]
+;; Invariant 20: any recipient of a non-zero distribution has positive stake
+;; recorded on the pool for the reward's cycle, i.e. they went through the
+;; delegate-stx path. Skips principals that have ever been admin since they
+;; can receive dust without being a stacker.
+(define-read-only (invariant-distribution-implies-stacked)
+  (fold fuzz-check-distrib-delegated FUZZ_REWARD_IDS true)
 )

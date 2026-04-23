@@ -334,8 +334,12 @@ describe("withdraw-dust", () => {
       ),
     ]);
     expect(block[0].result).toBeOk(boolCV(true));
-    // Second call: reserved-reward-balance (now 0) < unspent-sbtc (still REWARD).
-    expect(block[1].result).toBeErr(uintCV(999)); // ERR_UNEXPECTED
+    expect(block[0].events.length).toBe(2);
+    expect(block[0].events[0].event).toBe("ft_transfer_event");
+    expect(block[0].events[1].event).toBe("print_event");
+    // Second call: reserved-reward-balance (now 0).
+    expect(block[1].result).toBeOk(boolCV(true));
+    expect(block[1].events.length).toBe(0);
   });
 });
 

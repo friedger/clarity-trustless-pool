@@ -72,3 +72,23 @@
     (as-contract? () (try! (contract-call? enroll-contract enroll receiver)))
   )
 )
+
+;;[#env(simnet)]
+;; test that deployer can enroll
+(define-public (test-enroll)
+  (begin
+    (asserts! (is-eq contract-caller DEPLOYER) (ok false))
+    (try! (enroll .enroll-test none))
+    (try! (enroll .enroll-test (some DEPLOYER)))
+    (ok true)
+  )
+)
+
+;;[#env(simnet)]
+;; test that anyone can transfer
+(define-public (test-transfer)
+  (begin
+    (try! (transfer))
+    (ok true)
+  )
+)

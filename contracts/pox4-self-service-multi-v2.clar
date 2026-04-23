@@ -539,11 +539,10 @@
     (cycle uint)
     (user principal)
   )
-  (some u20000000000)
-  ;; (map-get? locked {
-  ;;   cycle: cycle,
-  ;;   stacker: user,
-  ;; })
+  (map-get? locked {
+    cycle: cycle,
+    stacker: user,
+  })
 )
 
 ;; Returns minimum
@@ -644,4 +643,113 @@
     sender: sender,
     contract-caller: calling-contract,
   })
+)
+
+;;
+;; Rendezvous invariants.
+;;
+
+;; [#env(simnet)]
+(define-map context
+  (string-ascii 100)
+  { called: uint }
+)
+
+;; [#env(simnet)]
+(define-public (update-context
+    (function-name (string-ascii 100))
+    (called uint)
+  )
+  (ok (map-set context function-name { called: called }))
+)
+
+;; [#env(simnet)]
+(define-constant FUZZ_CYCLES (list u0 u1 u2 u3 u4 u5 u6 u7 u8 u9 u10))
+
+;; [#env(simnet)]
+(define-constant FUZZ_PRINCIPALS (list
+  'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+  'ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+  'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+  'ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
+  'ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND
+  'ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB
+  'ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+  'ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+  'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+  'STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
+))
+
+;; [#env(simnet)]
+;; Pool invariant A: each recorded per-user lock is <= the user's current
+;; pox-4 delegation amount. Catches lockings that outgrow the delegation.
+(define-private (fuzz-check-locked-leq-delegated-user
+    (user principal)
+    (acc {
+      cycle: uint,
+      ok: bool,
+    })
+  )
+  (if (not (get ok acc))
+    acc
+    (let ((locked-amount (default-to u0
+        (map-get? locked { cycle: (get cycle acc), stacker: user })))
+        (delegated (get-delegated-amount user)))
+      (merge acc { ok: (or (is-eq locked-amount u0) (<= locked-amount delegated)) })
+    )
+  )
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-locked-leq-delegated
+    (cycle uint)
+    (ok-so-far bool)
+  )
+  (and ok-so-far
+    (get ok
+      (fold fuzz-check-locked-leq-delegated-user FUZZ_PRINCIPALS {
+        cycle: cycle,
+        ok: true,
+      })
+    )
+  )
+)
+
+(define-read-only (invariant-locked-leq-delegated)
+  (fold fuzz-check-locked-leq-delegated FUZZ_CYCLES true)
+)
+
+;; [#env(simnet)]
+;; Pool invariant B: the per-cycle pox-addr-indices list never exceeds 10
+;; entries (pox-4 signer-set limit honored by the contract).
+(define-private (fuzz-check-indices-under-cap
+    (cycle uint)
+    (ok-so-far bool)
+  )
+  (and ok-so-far
+    (<= (len (default-to (list) (map-get? pox-addr-indices cycle))) u10)
+  )
+)
+
+(define-read-only (invariant-pox-addr-indices-capped)
+  (fold fuzz-check-indices-under-cap FUZZ_CYCLES true)
+)
+
+;; [#env(simnet)]
+;; Pool invariant C: the deployer reward-admin is never dropped. Guards
+;; against a rogue co-admin disabling the original admin and bricking the
+;; pool.
+(define-read-only (invariant-deployer-remains-admin)
+  (default-to false (map-get? reward-admins 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM))
+)
+
+;; [#env(simnet)]
+;; Pool invariant D: when `active` is true the pool-pox-address is non-empty.
+;; Activating with an empty pox-address would route rewards into an invalid
+;; bitcoin output.
+(define-read-only (invariant-active-has-pox-address)
+  (or
+    (not (var-get active))
+    (> (len (get hashbytes (var-get pool-pox-address))) u0)
+  )
 )
