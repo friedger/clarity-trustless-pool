@@ -8,38 +8,40 @@ cache_dir = "./.cache"
 requirements = [
     {contract_id = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token"},
     {contract_id = "SP000000000000000000002Q6VF78.pox-4"},
+    {contract_id = "SPMPMA1V6P430M8C91QS1G9XJ95S59JS1TZFZ4Q4.pox4-multi-pool-v1"}
 ]
 
 [contracts.payout-self-service-sbtc]
 path = 'contracts/payout-self-service-sbtc.clar'
-clarity_version = 3
-epoch = 3.1
-
-[contracts.pox4-self-service-multi]
-path = 'contracts/pox4-self-service-multi.clar'
-clarity_version = 3
-epoch = 3.1
-
+clarity_version = 5
+epoch ="latest"
 
 [contracts.deposit-vault]
 path = 'contracts/deposit-vault.clar'
-clarity_version = 3
-epoch = 3.1
+clarity_version = 5
+epoch ="latest"
 
+### tests
 
 [contracts.payout-self-service-sbtc_test]
 path = 'contracts/tests/payout-self-service-sbtc_test.clar'
-clarity_version = 3
-epoch = 3.1
+clarity_version = 5
+epoch ="latest"
 
-[contracts.pox4-self-service-multi_flow_test]
-path = 'contracts/tests/pox4-self-service-multi_flow_test.clar'
-clarity_version = 3
-epoch = 3.1
+## pool contract (multi signers) v2
+[contracts.pox4-self-service-multi-v2]
+path = 'contracts/pox4-self-service-multi-v2.clar'
+clarity_version = 5
+epoch ="latest"
 
-[repl.analysis]
-passes = ["check_checker"]
-check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
+[contracts.pox4-self-service-multi-v2_flow_test]
+path = 'contracts/tests/pox4-self-service-multi-v2_flow_test.clar'
+clarity_version = 5
+epoch ="latest"
+
+#[repl.analysis]
+#passes = ["check_checker"]
+#check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
 
 # Check-checker settings:
 # trusted_sender: if true, inputs are trusted after tx_sender has been checked.

@@ -1,9 +1,9 @@
-import { tx } from "@hirosystems/clarinet-sdk";
+import { tx } from "@stacks/clarinet-sdk";
 import { Cl } from "@stacks/transactions";
 import { poxAddrCV } from "../clients/pox-4-client";
 import { poxAddressToTuple } from "@stacks/stacking";
 
-export const POX4_SELF_SERVICE_MULTI_CONTRACT_NAME = "pox4-self-service-multi";
+export const POX4_SELF_SERVICE_MULTI_CONTRACT_NAME = "pox4-self-service-multi-v2";
 export const poxPoolSelfServiceMultiContract =
   simnet.getAccounts().get("deployer")!! +
   "." +

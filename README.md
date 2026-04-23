@@ -1,67 +1,197 @@
 # clarity-trustless-pool
 
-Trustless stacking pool on Bitcoin L2 Stacks
+Trustless stacking pool on Bitcoin L2 Stacks.
 
-The Stacks blockchain's unique Proof of Transfer (PoX) consensus mechanism allows STX holders to earn Bitcoin rewards by participating in stacking already with small amount through stacking pools. However, users have to trust pool operators that they handle the stacking rewards correctly. With **trustless stacking pools** the handling of stacking rewards are now fully managed through smart contracts in a trustless way.
+The Stacks blockchain's Proof of Transfer (PoX) consensus lets STX holders earn
+Bitcoin rewards by stacking, and stacking pools let small holders participate.
+In conventional pools, users have to trust the operator to forward rewards. A
+**trustless stacking pool** removes that trust: delegation, commits, reward
+custody, and reward distribution are handled by smart contracts that anyone
+can drive.
 
-## What is a Trustless Stacking Pool?
+## Key benefits
 
-A trustless stacking pool is a smart contract system that allows multiple STX holders to combine their tokens for stacking without the need of a pool operator. Trustless pools use sbtc deposits, a smart contract to manage stacking and two smart contracts to distribute rewards.
+- **No custody risk** — STX never leave the user's wallet; they are locked in
+  `pox-4` under a delegation the user can revoke.
+- **Lower barrier** — users can join with ~0.01% of the cycle's total locked
+  STX (~50 STX as of April 2026).
+- **Automated rewards** — on-chain sBTC distribution, no trusted operator
+  touching the funds.
+- **Permissionless operations** — aggregation, deposit forwarding, and
+  per-user distribution can be triggered by anyone (bots, the users
+  themselves, friends and family).
 
-### Key Benefits
+## Risks
 
-- **No custody risk**: Your STX never leaves your wallet
-- **Lower barriers**: Participate with smaller amounts
-- **Automated rewards**: Smart contracts handle distribution
-- **Transparency**: All operations are on-chain and verifiable
+- **Smart contract bugs** — unintended behavior encoded in the contracts.
+- **Dummy read-only helpers** — `get-total-stacked` and the test-mode
+  `get-user-stacked` helpers are placeholders and must be replaced for
+  production (see "Limitations" below).
 
-### Risks
+## Architecture
 
-- **Smart contract bugs**: Unintentded behaviour encoded in contracts
-
-## Business Rules
-
-The trustless pool should workd according to following rules:
-
-1. Any user can join the pool with at a minimum of 0,0001 base points (~50 STX as of June 2025) of the total locked amount in the current cycle.
-2. The pox reward address is defined as the sbtc deposit address of a deposit vault contract.
-3. The signer node registers a generic signature for the pox reward address allowing to call commit without signature.
-4. Any user can extend the stacking period for pool members after half the cycle has passed (only 1 week to revoke delegation for users, can be done by bots)
-5. Any user can transfer the stacking rewards from deposit vault to the payout contract at any time if the balance is more than the minimum for intermediate payouts (tbd) or during the prepare phase (can be done by bots)
-6. Any user can transfer the portion of the rewards assigned to a user from the payout contract to the user. (can be done by bots)
-7. Failed sbtc deposits are send to a trusted rewards admin.
-
-Optional rules:
-
-1. Trusted rewards admin can black list payouts for certain users.
-2. Users can define a payout address to receive rewards different from the stacking address.
-3. Trusted rewards admin can change the minimum for intermediate payouts.
-4. Trusted rewards admin can manipulate payouts in emergency.
-5. Trusted rewards admin can withdraw assets other than sBTC from the contract (save wrongly directed assets).
-
-## Architecture Overview
+Three first-party contracts participate in the flow, plus two external
+dependencies:
 
 ### Contracts
 
-1. **`pox4-self-service-multi.clar`** - Handles delegation and stacking operations
-1. **`deposit-vault.clar`** - Holds rewards until the end of the cycle
-1. **`payout-self-service-sbtc.clar`** - Manages reward distribution (using sBTC)
+1. **`pox4-self-service-multi-v2.clar`** — wraps `pox-4` delegation and
+   stacking. Users call `delegate-stx` once; any principal can extend the
+   user's lock with `delegate-stack-stx` / `delegate-stack-stx-many` after the
+   half-cycle point. Tracks committed `reward-set-indices` per cycle and
+   snapshots per-user locked amounts into a `locked` map keyed by
+   `{ cycle, stacker }` so that payouts can read historical stakes without
+   relying on `at-block` (which was removed in Clarity 5 / epoch 3.4).
+   Permissioned admin operations: `set-pool-pox-address-active`,
+   `set-active`, `set-reward-admin`, `set-stx-buffer`.
 
-```clarity
-;; Example stacking call for users
-(contract-call? .pox4-self-service-multi delegate-stx
-  u1000000000000  ;; amount in micro-STX
-  user-data       ;; metadata for rewards
-)
+2. **`deposit-vault.clar`** — holds inbound sBTC rewards. `transfer` forwards
+   the sBTC to the payout contract either during the prepare phase of a cycle
+   or once the balance exceeds `INTERMED_MINIMUM` (0.1 sBTC). Permissionless.
+   The vault's sBTC deposit address is registered as the pool's PoX reward
+   address in `pox4-self-service-multi-v2`, so rewards land in the vault
+   automatically.
+
+3. **`payout-self-service-sbtc.clar`** — accepts rewards via `deposit-rewards`
+   (permissionless; anyone with sBTC can top up) and distributes them to
+   stackers in proportion to their locked STX for the reward's cycle.
+   Admin-only maintenance: `withdraw-dust`, `withdraw-excess-sbtc`,
+   `set-rewards-admin`.
+
+### External dependencies
+
+- `SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token` — the sBTC SIP-010
+  token.
+- `SP000000000000000000002Q6VF78.pox-4` — the Stacks PoX-4 contract.
+- `SPMPMA1V6P430M8C91QS1G9XJ95S59JS1TZFZ4Q4.pox4-multi-pool-v1` — the
+  existing multi-pool reference deployment used for parity testing.
+
+## End-to-end flow (happy path)
+
+See `docs/happy-path.md` for the off-chain binaries involved. On-chain, the
+operation is:
+
+1. Pool admin sets the pool's PoX address to the vault's sBTC deposit address
+   via `set-pool-pox-address-active`.
+2. User allows the pool contract as a contract-caller on `pox-4`, then calls
+   `pox4-self-service-multi-v2.delegate-stx`. The contract revokes any
+   previous delegation, re-delegates to itself, and locks the user's STX for
+   one cycle (minus a small STX buffer for the revoke-delegation tx fee).
+3. A bot (or anyone) calls `stack-aggregation-commit` before the prepare
+   phase, producing a reward-set entry that `pox-4` will pay out to the
+   vault's Bitcoin address.
+4. Bitcoin block producers pay sBTC rewards to the vault.
+5. Anyone calls `deposit-vault.transfer` during the prepare phase (or once
+   the balance crosses `INTERMED_MINIMUM`), moving the sBTC into the payout
+   contract via `payout-self-service-sbtc.deposit-rewards`.
+6. Anyone calls `payout-self-service-sbtc.distribute-rewards(user, id)` or
+   `distribute-rewards-many(users, id)` to stream each user's share.
+
+Every step after the user's initial `delegate-stx` is permissionless — the
+contract, not any operator, enforces correctness.
+
+## Payout math and dust handling
+
+A user's share of a reward is:
+
+```
+share = floor(reward_amount_sbtc * user_stacked / total_stacked)
 ```
 
-## Testing Strategy: Flow Tests
+This is pure integer truncation. Because shares are computed independently
+per user (not "last user gets the remainder"), the sum of all shares is less
+than or equal to the reward; the gap — at most `N - 1` sats for `N` users —
+is **dust** that stays in the contract. Where it lives:
 
-Flow tests are crucial for testing complex multi-transaction scenarios that simulate real user interactions. They use special annotations to control transaction senders and test entire workflows.
+- `remaining-sbtc-by-reward-id[reward-id]` — per-reward ledger of unspent sBTC,
+  decremented on every `distribute-rewards*` transfer.
+- `reward-balance` — global reserve of reserved sBTC, decremented in
+  lock-step.
 
-### Setting Up Flow Tests
+After a **2-cycle cooldown** (`current-cycle > reward-cycle + 2`), the
+rewards admin reclaims the dust via `withdraw-dust(reward-id)`. The cooldown
+is there so stackers have time to claim; reclaimed dust is not
+automatically redistributed.
 
-Flow tests use comment annotations to specify transaction details:
+sBTC transferred to the payout contract outside of `deposit-rewards` (for
+example if a reward lands directly, or as a simple accounting mistake) is
+recoverable at any time by the admin via `withdraw-excess-sbtc`. This
+function can only move the unreserved surplus (`contract-balance -
+reward-balance`); reserved rewards are protected.
+
+## Limitations
+
+- **Dummy aggregates.** `get-total-stacked` returns a hard-coded placeholder
+  (`750_000_000_000_000` uSTX) via `get-total-stacked-dummy`, and a
+  `get-total-stacked-testnet` variant reads from the pool contract. A real
+  mainnet implementation must read the committed reward-set entries.
+- **Zero-share users are a no-op.** If a user's share truncates to 0 (tiny
+  stake vs. small reward), `distribute-reward-internal` fires no
+  `ft_transfer_event` and does **not** write a `distributions` entry. Retries
+  are harmless but keep producing 0 until either the reward grows or their
+  stake does — which, for a given reward ID, will not happen.
+- **Dust is not redistributed.** It is reclaimable by the admin after the
+  2-cycle cooldown but never rolls into the next reward pool.
+- **`withdraw-dust` retention.** The function decrements `reward-balance` but
+  does not delete the `remaining-sbtc-by-reward-id` entry. The ledger entry
+  is informational after a single successful reclaim; a second call is
+  rejected by the `reserved-reward-balance >= unspent-sbtc` underflow guard.
+- **`at-block` removed (Clarity 5 / SIP-042).** Historical state lookups are
+  no longer possible. Per-user stacked amounts are instead snapshotted into
+  the `locked` map in `pox4-self-service-multi-v2` at commit time.
+- **Static caps.** `distribute-rewards-many` takes at most 200 principals;
+  `pox-addr-indices` tracks at most 10 reward-set indices per cycle;
+  `delegate-stack-stx-many` takes at most 30 users per call.
+- **Admin blast radius.** A compromised `rewards-admin` can: rotate itself
+  away, reclaim dust after cycle+2, pull excess sBTC, and (historically)
+  front-run stackers for undistributed dust. Users claiming within the
+  cycle+2 window are safe; unclaimed dust is not.
+- **Delegation decrease.** The pool refuses to decrease a user's locked
+  amount (`ERR_DECREASE_FORBIDDEN`); decreases require waiting one cycle for
+  unlock, then re-delegating.
+
+## Design choices
+
+- **Permissionless distribution.** Anyone can trigger `distribute-rewards`
+  for any user, including bots. The contract is the authority; operators are
+  a convenience. The same applies to `deposit-rewards`, `deposit-vault.transfer`,
+  and `stack-aggregation-commit`.
+- **Independent per-user shares.** Keeping shares independent of calculation
+  order (rather than "last user gets the remainder") makes distribution
+  idempotent and replayable — a bot that hits a retry loop cannot overpay,
+  underpay, or reorder claims. The cost is accepting a small, deterministic
+  dust residue per reward.
+- **Reserved / excess split.** `reward-balance` tracks reserved rewards and
+  is isolated from the admin's `withdraw-excess-sbtc` path. This enforces a
+  hard boundary between user funds and accidental or adversarial deposits.
+- **Cooldown before dust reclaim.** Two full cycles elapse before
+  `withdraw-dust` is allowed, which bounds the admin's ability to front-run
+  legitimate claims.
+- **Snapshot-based stacking ledger.** Because Clarity 5 removes `at-block`,
+  per-user stakes are written into a `locked { cycle, stacker }` map at
+  commit time, and `get-user-stacked(cycle, user)` reads from there. This
+  trades a small extra write per commit for the loss of historical lookups.
+- **Clarity 5 (epoch 3.4).** All first-party contracts are Clarity 5, using
+  `as-contract?` and SIP-030 allowance grants.
+
+## Testing
+
+### Unit & integration tests (Vitest + Clarinet SDK)
+
+```bash
+pnpm install
+pnpm test          # full suite
+pnpm test:report   # + coverage + cost reports
+pnpm test:watch    # re-runs on .ts / .clar edits
+```
+
+A single file: `npx vitest run tests/payout-self-service-sbtc.test.ts`.
+Filter by test name: add `-t "calculate-share"`.
+
+### Flow tests (Clarity, discovered via `@stacks/clarunit`)
+
+Flow tests live in `contracts/tests/*_test.clar` and use comment
+annotations to drive multi-sender scenarios:
 
 ```clarity
 ;; @name test the delegation flow
@@ -69,12 +199,12 @@ Flow tests use comment annotations to specify transaction details:
 (define-public (test-delegation)
   (begin
     ;; @caller deployer
-    (unwrap! (contract-call? .pox4-self-service-multi set-pool-pox-address-active
+    (unwrap! (contract-call? .pox4-self-service-multi-v2 set-pool-pox-address-active
       {version: 0x00, hashbytes: 0x7321b74e2b6a7e949e6c4ad313035b1665095017})
       (err u1000))
     ;; @caller wallet_1
     (unwrap! (contract-call? 'ST000000000000000000002AMW42H.pox-4
-      allow-contract-caller .pox4-self-service-multi none)
+      allow-contract-caller .pox4-self-service-multi-v2 none)
       (err u2000))
     ;; More test steps...
     (ok true)
@@ -82,133 +212,25 @@ Flow tests use comment annotations to specify transaction details:
 )
 ```
 
-### Key Testing Patterns
+They are registered as `*_test` entries in `Clarinet.toml` and loaded by the
+one-liner `tests/clarunit.test.ts`.
 
-1. **Authorization Flow**: Test that users can properly authorize the pool contract
-2. **Delegation Flow**: Verify STX delegation works correctly
-3. **Aggregation Flow**: Test that the pool can commit aggregated STX
-4. **Reward Distribution**: Ensure rewards are distributed fairly
+### Devnet
 
-## Testing Strategy: Devnet
-
-The project contains multiple YAML files for different steps in the stacking cycles:
-
-### 1. Initial Setup (`0-init.yaml`)
-
-```yaml
-plan:
-  batches:
-    - id: 0
-      transactions:
-        - contract-call:
-            contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi
-            method: set-pool-pox-address-active
-            parameters:
-              - "{ hashbytes: 0x7321b74e2b6a7e949e6c4ad313035b1665095017, version: 0x00 }"
-```
-
-This deployment:
-
-- Sets up the pool's Bitcoin address for receiving rewards
-- Configures initial contract permissions
-- Prepares the system for user delegations
-
-### 2. User Delegation (`1-alice-delegate.devnet-plan.yaml`)
-
-```yaml
-transactions:
-  - contract-call:
-      contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi
-      expected-sender: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
-      method: delegate-stx
-      parameters:
-        - u250000000000000 # 250,000 STX
-        - 0x # User data
-```
-
-### 3. Aggregation (`2-aggregate-commit-2.yaml`)
-
-User commits the aggregated STX for stacking:
-
-```yaml
-transactions:
-  - contract-call:
-      method: stack-aggregation-commit
-      parameters:
-        - u2 # Cycle
-        - (some 0x18ce215d39a1d3daff...) # Signature
-        - 0x03cd2cfdbd2ad9332828a7a13ef... # Signer key
-        - u1000000000000000 # Amount
-        - u123 # Auth ID
-```
-
-### 4. Reward Distribution (`3-distribute-rewards.yaml`)
-
-Finally, rewards are distributed to participants:
-
-```yaml
-transactions:
-  - contract-call:
-      contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.payout-self-service-sbtc
-      method: distribute-rewards
-      parameters:
-        - "'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG" # Recipient
-        - u1 # Cycle
-```
-
-### Running Devnet Locally
-
-To test the trustless pool on your local devnet:
-
-1. **Start the devnet**:
+Devnet deployments live under `deployments/` as numbered YAML plans; apply
+them in order against a running `clarinet devnet start`:
 
 ```bash
 clarinet devnet start
-```
-
-2. **Deploy contracts**:
-
-```bash
-clarinet deployment apply deployments/default.devnet-plan.yaml
-```
-
-3. **Run initialization**:
-
-```bash
 clarinet deployment apply deployments/0-init.yaml
-```
-
-4. **Test user flows**:
-
-```bash
 clarinet deployment apply deployments/1-alice-delegate.devnet-plan.yaml
-clarinet deployment apply deployments/1-bob-delegate.devnet-plan.yaml
+# ...
 ```
 
-## Testing Strategy: Unit tests
+### Signature generation
 
-To test the trustless pool on simnet with unit tests run the following commands:
+PoX-4 aggregation-commit signatures for tests and scripts:
 
 ```bash
-pnpm install
-pnpm test
+pnpm generate:signature    # runs src/signature.ts
 ```
-
-## Advanced Testing with Signatures
-
-The pool uses cryptographic signatures to ensure only authorized operations can be performed. The flow tests include signature generation and validation:
-
-```clarity
-(define-constant signer-key 0x03cd2cfdbd2ad9332828a7a13ef62cb999e063421c708e863a7ffed71fb61c88c9)
-
-(define-private (aggregate-commit-internal)
-  (contract-call? .pox4-self-service-multi
-    stack-aggregation-commit
-    u0
-    (some 0xee088eb40553ca5cddcd7eb18a48f76b5047bfa3b0a3da60446d69226d345c0a49a5a709e74a7a21933fce837e5fee86caaca2dbc4f42391d7710380ad023caf00)
-    signer-key
-    u1000000000000000
-    u123))
-```
-
-The signature can be created using script `src/signature.ts`

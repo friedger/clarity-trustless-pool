@@ -1,5 +1,5 @@
 ;; @contract pox-4 Self-Service Pool with multiple signers and multiple distribution options
-;; @version 1
+;; @version 2
 ;; Changelog: add user data to delegate-stx, add aggregation functions
 
 ;; Self-service non-custodial stacking pool
@@ -50,21 +50,20 @@
 })
 (define-data-var stx-buffer uint u1000000) ;; 1 STX
 
-(define-constant pox-info (unwrap-panic (contract-call? 'ST000000000000000000002AMW42H.pox-4 get-pox-info)))
+(define-constant POX_INFO (unwrap-panic (contract-call? 'ST000000000000000000002AMW42H.pox-4 get-pox-info)))
 ;; Half cycle lenght is 1050 for mainnet
-(define-constant half-cycle-length (/ (get reward-cycle-length pox-info) u2))
+(define-constant HALF_CYCLE_LENGTH (/ (get reward-cycle-length POX_INFO) u2))
 
-(define-constant err-unauthorized (err u401))
-(define-constant err-forbidden (err u403))
-(define-constant err-not-found (err u404))
-(define-constant err-too-early (err u500))
-(define-constant err-too-many-signers (err u501))
-(define-constant err-decrease-forbidden (err u503))
-(define-constant err-pox-address-deactivated (err u504))
+(define-constant ERR_UNAUTHORIZED (err u401))
+(define-constant ERR_FORBIDDEN (err u403))
+(define-constant ERR_TOO_EARLY (err u500))
+(define-constant ERR_TOO_MANY_SIGNERS (err u501))
+(define-constant ERR_DECREASE_FORBIDDEN (err u503))
+(define-constant ERR_POX_ADDRESS_DEACTIVATED (err u504))
 ;; Error code 3 is used by pox-4 contract for already stacking errors
-(define-constant err-already-stacking (err u603))
+(define-constant ERR_ALREADY_STACKING (err u603))
 ;; Error code 9 is used by pox-4 contract for permission denied errors
-(define-constant err-stacking-permission-denied (err u609))
+(define-constant ERR_STACKING_PERMISSION_DENIED (err u609))
 ;; Allowed contract-callers handling a user's stacking activity.
 (define-map allowance-contract-callers
   {
@@ -77,6 +76,14 @@
 ;; Map of reward cyle to block height of last commit
 (define-map last-aggregation
   uint
+  uint
+)
+
+(define-map locked
+  {
+    cycle: uint,
+    stacker: principal,
+  }
   uint
 )
 
@@ -135,7 +142,7 @@
         allowed-amount
       ))
     )
-    (asserts! (var-get active) err-pox-address-deactivated)
+    (asserts! (var-get active) ERR_POX_ADDRESS_DEACTIVATED)
     (match (contract-call? 'ST000000000000000000002AMW42H.pox-4 delegate-stack-stx user
       amount-ustx pox-address start-burn-ht u1
     )
@@ -150,8 +157,7 @@
 
 (define-private (lock-delegated-stx-fold
     (user principal)
-    (result (list
-      30
+    (result (list 30
       (response {
         lock-amount: uint,
         stacker: principal,
@@ -180,14 +186,23 @@
       (status (stx-account user))
       (locked-amount (get locked status))
     )
-    (asserts! (>= amount-ustx locked-amount) err-decrease-forbidden)
+    (asserts! (>= amount-ustx locked-amount) ERR_DECREASE_FORBIDDEN)
     (match (maybe-extend-for-next-cycle user pox-address status)
-      success-extend (let ((unlock-burn-height (get unlock-burn-height success-extend)))
+      success-extend (let (
+          (unlock-burn-height (get unlock-burn-height success-extend))
+          (current-cycle (current-pox-reward-cycle))
+        )
         (if (is-eq amount-ustx locked-amount)
           ;; do not increase
           (begin
             (asserts! (> unlock-burn-height (get unlock-height status))
-              err-already-stacking
+              ERR_ALREADY_STACKING
+            )
+            (map-set locked {
+              cycle: current-cycle,
+              stacker: user,
+            }
+              amount-ustx
             )
             (ok {
               lock-amount: locked-amount,
@@ -200,11 +215,19 @@
             (match (contract-call? 'ST000000000000000000002AMW42H.pox-4
               delegate-stack-increase user pox-address increase-by
             )
-              success-increase (ok {
-                lock-amount: (get total-locked success-increase),
-                stacker: user,
-                unlock-burn-height: unlock-burn-height,
-              })
+              success-increase (begin
+                (map-set locked {
+                  cycle: current-cycle,
+                  stacker: user,
+                }
+                  amount-ustx
+                )
+                (ok {
+                  lock-amount: amount-ustx,
+                  stacker: user,
+                  unlock-burn-height: unlock-burn-height,
+                })
+              )
               error-increase (err (* u1000000000 (to-uint error-increase)))
             )
           )
@@ -230,9 +253,7 @@
     })
   )
   (let (
-      (current-cycle (contract-call? 'ST000000000000000000002AMW42H.pox-4
-        current-pox-reward-cycle
-      ))
+      (current-cycle (current-pox-reward-cycle))
       (unlock-height (get unlock-height status))
     )
     (if (not-locked-for-cycle unlock-height (+ u1 current-cycle))
@@ -261,20 +282,17 @@
     (amount-ustx uint)
     (user-data (buff 2048))
   )
-  (let (
-      (user tx-sender)
-      (current-cycle (current-pox-reward-cycle))
-    )
+  (let ((user tx-sender))
     ;; Must be called directly by the tx-sender or by an allowed contract-caller
-    (asserts! (check-caller-allowed) err-stacking-permission-denied)
+    (asserts! (check-caller-allowed) ERR_STACKING_PERMISSION_DENIED)
     (print {
       a: "delegate-stx",
       payload: user-data,
     })
     ;; Do 1. and 2.
-    (try! (delegate-stx-inner amount-ustx (as-contract tx-sender) none))
+    (try! (delegate-stx-inner amount-ustx current-contract none))
     ;; Do 3.
-    (as-contract (lock-delegated-stx user))
+    (as-contract? () (try! (lock-delegated-stx user)))
   )
 )
 
@@ -283,9 +301,9 @@
 ;; This function can be called only after the current cycle is half through
 (define-public (delegate-stack-stx (user principal))
   (let ((current-cycle (current-pox-reward-cycle)))
-    (asserts! (can-lock-now current-cycle) err-too-early)
+    (asserts! (can-lock-now current-cycle) ERR_TOO_EARLY)
     ;; Do 3.
-    (as-contract (lock-delegated-stx user))
+    (as-contract? () (try! (lock-delegated-stx user)))
   )
 )
 
@@ -293,13 +311,10 @@
 ;; This function can be called by automation, friends or family for users that have delegated once.
 ;; This function can be called only after the current cycle is half through
 (define-public (delegate-stack-stx-many (users (list 30 principal)))
-  (let (
-      (current-cycle (current-pox-reward-cycle))
-      (start-burn-ht (+ burn-block-height u1))
-    )
-    (asserts! (can-lock-now current-cycle) err-too-early)
+  (let ((current-cycle (current-pox-reward-cycle)))
+    (asserts! (can-lock-now current-cycle) ERR_TOO_EARLY)
     ;; Do 3. for users
-    (ok (as-contract (fold lock-delegated-stx-fold users (list))))
+    (as-contract? () (fold lock-delegated-stx-fold users (list)))
   )
 )
 
@@ -313,10 +328,12 @@
     (auth-id uint)
   )
   (let ((reward-cycle (+ u1 current-cycle)))
-    (as-contract (contract-call? 'ST000000000000000000002AMW42H.pox-4
-      stack-aggregation-increase (var-get pool-pox-address) reward-cycle index
-      signer-sig signer-key max-amount auth-id
-    ))
+    (as-contract? ()
+      (try! (to-uint-err (contract-call? 'ST000000000000000000002AMW42H.pox-4
+        stack-aggregation-increase (var-get pool-pox-address) reward-cycle
+        index signer-sig signer-key max-amount auth-id
+      )))
+    )
   )
 )
 
@@ -329,16 +346,20 @@
     (auth-id uint)
   )
   (let ((reward-cycle (+ u1 current-cycle)))
-    (match (as-contract (contract-call? 'ST000000000000000000002AMW42H.pox-4
-      stack-aggregation-commit-indexed (var-get pool-pox-address) reward-cycle
-      signer-sig signer-key max-amount auth-id
-    ))
-      index (let ((reward-index-set (default-to (list) (map-get? pox-addr-indices reward-cycle))))
-        (map-set pox-addr-indices reward-cycle (unwrap! (as-max-len? (append reward-index-set index) u10) (err 999)))
-        (map-set last-aggregation reward-cycle burn-block-height)
-        (ok index)
+    (as-contract? ()
+      (try! (match (contract-call? 'ST000000000000000000002AMW42H.pox-4
+        stack-aggregation-commit-indexed (var-get pool-pox-address)
+        reward-cycle signer-sig signer-key max-amount auth-id
       )
-      error (err error)
+        index (let ((reward-index-set (default-to (list) (map-get? pox-addr-indices reward-cycle))))
+          (map-set pox-addr-indices reward-cycle
+            (unwrap! (as-max-len? (append reward-index-set index) u10) (err u999))
+          )
+          (map-set last-aggregation reward-cycle burn-block-height)
+          (ok index)
+        )
+        error (err (to-uint error))
+      ))
     )
   )
 )
@@ -368,7 +389,7 @@
 (define-public (set-active (is-active bool))
   (begin
     (asserts! (default-to false (map-get? reward-admins contract-caller))
-      err-unauthorized
+      ERR_UNAUTHORIZED
     )
     (ok (var-set active is-active))
   )
@@ -380,7 +401,7 @@
 }))
   (begin
     (asserts! (default-to false (map-get? reward-admins contract-caller))
-      err-unauthorized
+      ERR_UNAUTHORIZED
     )
     (ok (var-set pool-pox-address pox-addr))
   )
@@ -392,7 +413,7 @@
 }))
   (begin
     (asserts! (default-to false (map-get? reward-admins contract-caller))
-      err-unauthorized
+      ERR_UNAUTHORIZED
     )
     (var-set pool-pox-address pox-addr)
     (ok (var-set active true))
@@ -402,21 +423,22 @@
 (define-public (set-stx-buffer (amount-ustx uint))
   (begin
     (asserts! (default-to false (map-get? reward-admins contract-caller))
-      err-unauthorized
+      ERR_UNAUTHORIZED
     )
     (ok (var-set stx-buffer amount-ustx))
   )
 )
 
+;; reward admin can add other reward admins, but cannot remove them or change their permissions
 (define-public (set-reward-admin
     (new-admin principal)
     (enable bool)
   )
   (begin
     (asserts! (default-to false (map-get? reward-admins contract-caller))
-      err-unauthorized
+      ERR_UNAUTHORIZED
     )
-    (asserts! (not (is-eq contract-caller new-admin)) err-forbidden)
+    (asserts! (not (is-eq contract-caller new-admin)) ERR_FORBIDDEN)
     (ok (map-set reward-admins new-admin enable))
   )
 )
@@ -428,15 +450,15 @@
 ;; What's the reward cycle number of the burnchain block height?
 ;; Will runtime-abort if height is less than the first burnchain block (this is intentional)
 (define-read-only (burn-height-to-reward-cycle (height uint))
-  (/ (- height (get first-burnchain-block-height pox-info))
-    (get reward-cycle-length pox-info)
+  (/ (- height (get first-burnchain-block-height POX_INFO))
+    (get reward-cycle-length POX_INFO)
   )
 )
 
 ;; What's the block height at the start of a given reward cycle?
 (define-read-only (reward-cycle-to-burn-height (cycle uint))
-  (+ (get first-burnchain-block-height pox-info)
-    (* cycle (get reward-cycle-length pox-info))
+  (+ (get first-burnchain-block-height POX_INFO)
+    (* cycle (get reward-cycle-length POX_INFO))
   )
 )
 
@@ -471,27 +493,50 @@
 )
 
 (define-read-only (can-lock-now (cycle uint))
-  (> burn-block-height (+ (reward-cycle-to-burn-height cycle) half-cycle-length))
+  (> burn-block-height (+ (reward-cycle-to-burn-height cycle) HALF_CYCLE_LENGTH))
 )
 
-(define-read-only (get-total-stacked (cycle-id uint))  
-  (fold get-total-stacked-inner 
-    (default-to (list) (map-get? pox-addr-indices cycle-id))
-    {cycle-id: cycle-id, total-stacked: u0})
+(define-read-only (get-total-stacked (cycle-id uint))
+  (fold get-total-stacked-inner
+    (default-to (list) (map-get? pox-addr-indices cycle-id)) {
+    cycle-id: cycle-id,
+    total-stacked: u0,
+  })
 )
 
-(define-read-only (get-total-stacked-inner (reward-set-index uint) 
-  (result {cycle-id: uint, total-stacked: uint}))
-  (let ((cycle-id (get cycle-id result)) 
-      (total-stacked 
-    (match
-      (contract-call? 'ST000000000000000000002AMW42H.pox-4
+(define-read-only (get-total-stacked-inner
+    (reward-set-index uint)
+    (result {
+      cycle-id: uint,
+      total-stacked: uint,
+    })
+  )
+  (let (
+      (cycle-id (get cycle-id result))
+      (total-stacked (match (contract-call? 'ST000000000000000000002AMW42H.pox-4
         get-reward-set-pox-address (get cycle-id result) reward-set-index
-      )      
-   info (get total-ustx info)
-   u0)))
-   {cycle-id: cycle-id, total-stacked: total-stacked}
-))
+      )
+        info (get total-ustx info)
+        u0
+      ))
+    )
+    {
+      cycle-id: cycle-id,
+      total-stacked: total-stacked,
+    }
+  )
+)
+
+(define-read-only (get-user-stacked
+    (cycle uint)
+    (user principal)
+  )
+  (some u20000000000)
+  ;; (map-get? locked {
+  ;;   cycle: cycle,
+  ;;   stacker: user,
+  ;; })
+)
 
 ;; Returns minimum
 (define-private (min
@@ -515,6 +560,13 @@
   )
 )
 
+(define-read-only (to-uint-err (result (response bool int)))
+  (match result
+    success (ok success)
+    err-val (err (to-uint err-val))
+  )
+)
+
 ;;
 ;; Functions about allowance of delegation/stacking contract calls
 ;;
@@ -528,7 +580,7 @@
     (until-burn-ht (optional uint))
   )
   (begin
-    (asserts! (is-eq tx-sender contract-caller) err-stacking-permission-denied)
+    (asserts! (is-eq tx-sender contract-caller) ERR_STACKING_PERMISSION_DENIED)
     (ok (map-set allowance-contract-callers {
       sender: tx-sender,
       contract-caller: caller,
@@ -540,7 +592,7 @@
 ;; Revokes contract-caller authorization to call stacking methods
 (define-public (disallow-contract-caller (caller principal))
   (begin
-    (asserts! (is-eq tx-sender contract-caller) err-stacking-permission-denied)
+    (asserts! (is-eq tx-sender contract-caller) ERR_STACKING_PERMISSION_DENIED)
     (ok (map-delete allowance-contract-callers {
       sender: tx-sender,
       contract-caller: caller,

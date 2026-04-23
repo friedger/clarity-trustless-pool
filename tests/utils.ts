@@ -5,7 +5,7 @@ import {
   getRewardSetPoxAddress,
 } from "./clients/pox-4-client.js";
 import { poxPoolSelfServiceMultiContract } from "./clients/pox4-self-service-multi-client.js";
-import { ParsedTransactionResult } from "@hirosystems/clarinet-sdk";
+import { ParsedTransactionResult } from "@stacks/clarinet-sdk";
 
 export function expectPartialStackedByCycle(
   poxAddr: { version: string; hashbytes: string },

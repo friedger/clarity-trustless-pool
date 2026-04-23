@@ -1,17 +1,17 @@
-(define-constant err-forbidden (err u403))
-(define-constant err-not-found (err u404))
-(define-constant err-too-early (err u500))
-(define-constant err-insufficient-funds (err u501))
-(define-constant err-insufficient-rewards (err u502))
-(define-constant err-unexpected (err u999))
+(define-constant ERR_FORBIDDEN (err u403))
+(define-constant ERR_NOT_FOUND (err u404))
+(define-constant ERR_TOO_EARLY (err u500))
+(define-constant ERR_INSUFFICIENT_FUNDS (err u501))
+(define-constant ERR_INSUFFICIENT_REWARDS (err u502))
+(define-constant ERR_UNEXPECTED (err u999))
 
-(define-constant pox-info (unwrap-panic (contract-call? 'ST000000000000000000002AMW42H.pox-4 get-pox-info)))
+(define-constant POX_INFO (unwrap-panic (contract-call? 'ST000000000000000000002AMW42H.pox-4 get-pox-info)))
 (define-data-var rewards-admin principal tx-sender)
 (define-data-var reward-balance uint u0)
 (define-data-var last-reward-id uint u0)
 
 (define-map rewards
-  uint
+  uint ;; reward id
   {
     cycle: uint,
     amount-sbtc: uint,
@@ -19,9 +19,9 @@
   }
 )
 
-(define-map unspent-amounts-sbtc
-  uint
-  uint
+(define-map remaining-sbtc-by-reward-id
+  uint ;; reward-id
+  uint ;; unspent amount of sbtc for this reward
 )
 
 (define-map distributions
@@ -29,7 +29,7 @@
     reward-id: uint,
     user: principal,
   }
-  uint
+  uint ;; amount of sbtc distributed to the user for this reward
 )
 
 (define-data-var ctx-reward {
@@ -37,15 +37,12 @@
   reward-id: uint,
   amount-sbtc: uint,
   total-stacked: uint,
-  id-header-hash: (buff 32),
 } {
   cycle: u0,
   reward-id: u0,
   amount-sbtc: u0,
   total-stacked: u0,
-  id-header-hash: 0x,
 })
-(define-data-var ctx-unspent-amount-sbtc uint u0)
 
 (define-private (transfer-memo
     (amount uint)
@@ -58,9 +55,9 @@
   )
 )
 
-(define-private (get-balance (who principal))
+(define-read-only (get-contract-balance-sbtc)
   (unwrap-panic (contract-call? 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token
-    get-balance-available who
+    get-balance-available current-contract
   ))
 )
 
@@ -68,11 +65,11 @@
     (users (list 200 principal))
     (reward-id uint)
   )
-  (let ((unspent (unwrap! (map-get? unspent-amounts-sbtc reward-id) err-not-found)))
+  (let ((unspent (unwrap! (map-get? remaining-sbtc-by-reward-id reward-id) ERR_NOT_FOUND)))
     (try! (set-ctx-reward reward-id))
     (match (fold distribute-reward-internal users (ok unspent))
-      success (begin
-        (map-set unspent-amounts-sbtc reward-id success)
+      remaining-sbtc (begin
+        (map-set remaining-sbtc-by-reward-id reward-id remaining-sbtc)
         (ok true)
       )
       error (err error)
@@ -84,11 +81,11 @@
     (user principal)
     (reward-id uint)
   )
-  (let ((unspent (unwrap! (map-get? unspent-amounts-sbtc reward-id) err-not-found)))
+  (let ((unspent (unwrap! (map-get? remaining-sbtc-by-reward-id reward-id) ERR_NOT_FOUND)))
     (try! (set-ctx-reward reward-id))
     (match (distribute-reward-internal user (ok unspent))
-      success (begin
-        (map-set unspent-amounts-sbtc reward-id success)
+      remaining-sbtc (begin
+        (map-set remaining-sbtc-by-reward-id reward-id remaining-sbtc)
         (ok true)
       )
       error (err error)
@@ -107,25 +104,32 @@
     (let (
         (reward (var-get ctx-reward))
         (reward-id (get reward-id reward))
-        (received-rewards (map-get? distributions {
-          reward-id: reward-id,
-          user: user,
-        }))
-        (id-header-hash (get id-header-hash reward))
-        (user-stacked (get-user-stacked user id-header-hash))
+        (cycle (get cycle reward))
+        (user-stacked (default-to u0 (get-user-stacked cycle user)))
         (share-sbtc (calculate-share (get amount-sbtc reward) user-stacked
           (get total-stacked reward)
         ))
         (current-reward-balance (var-get reward-balance))
       )
       ;; if the user already received rewards, just continue
-      (asserts! (is-none received-rewards) (ok unspent))
+      (asserts!
+        (is-none (map-get? distributions {
+          reward-id: reward-id,
+          user: user,
+        }))
+        (ok unspent)
+      )
       ;; check that there is enough sbtc to transfer
-      (asserts! (>= unspent share-sbtc) err-insufficient-funds)
-      (asserts! (>= current-reward-balance share-sbtc) err-insufficient-rewards)
+      (asserts! (>= unspent share-sbtc) ERR_INSUFFICIENT_FUNDS)
+      (asserts! (>= current-reward-balance share-sbtc) ERR_INSUFFICIENT_REWARDS)
       (if (> share-sbtc u0)
         (begin
-          (try! (as-contract (transfer-memo share-sbtc tx-sender user 0x72657761726473)))
+          (try! (as-contract?
+            ((with-ft 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token
+              "sbtc-token" share-sbtc
+            ))
+            (try! (transfer-memo share-sbtc tx-sender user 0x72657761726473))
+          ))
           (var-set reward-balance (- (var-get reward-balance) share-sbtc))
           (map-set distributions {
             reward-id: reward-id,
@@ -150,71 +154,41 @@
   (let (
       (reserved-balance (var-get reward-balance))
       (new-reserved-balance (+ reserved-balance amount))
-      (balance (as-contract (get-balance tx-sender)))
+      (balance (get-contract-balance-sbtc))
       (reward-id (+ (var-get last-reward-id) u1))
-      (total-stacked (unwrap! (get-total-stacked cycle) err-not-found))
+      (total-stacked (unwrap! (get-total-stacked cycle) ERR_NOT_FOUND))
     )
     ;; rewards can only be added after the end of the reward phase of the cycle
     (asserts!
       (> burn-block-height
         (-
-          (+ (get first-burnchain-block-height pox-info)
-            (* (get reward-cycle-length pox-info) (+ cycle u1))
+          (+ (get first-burnchain-block-height POX_INFO)
+            (* (get reward-cycle-length POX_INFO) (+ cycle u1))
           )
-          (get prepare-cycle-length pox-info)
+          (get prepare-cycle-length POX_INFO)
         ))
-      err-too-early
+      ERR_TOO_EARLY
     )
     ;; amount must be less or equal than the unallocated balance
-    (asserts! (<= new-reserved-balance balance) err-insufficient-funds)
+    (asserts! (<= new-reserved-balance balance) ERR_INSUFFICIENT_FUNDS)
     (var-set reward-balance new-reserved-balance)
     (var-set last-reward-id reward-id)
-    (map-set unspent-amounts-sbtc reward-id amount)
+    (map-set remaining-sbtc-by-reward-id reward-id amount)
     (asserts!
       (map-insert rewards reward-id {
         cycle: cycle,
         amount-sbtc: amount,
         total-stacked: total-stacked,
       })
-      err-unexpected
+      ERR_UNEXPECTED
     )
     (ok reward-id)
   )
 )
-
-(define-private (remove-all-rewards (reward-id uint))
-  (let (
-      (reserved-reward-balance (var-get reward-balance))
-      (reward-details (unwrap! (map-get? rewards reward-id) err-not-found))
-      (unspent-sbtc (unwrap! (map-get? unspent-amounts-sbtc reward-id) err-not-found))
-    )
-    (asserts! (>= reserved-reward-balance unspent-sbtc) err-unexpected)
-    (var-set reward-balance (- reserved-reward-balance unspent-sbtc))
-    (map-delete rewards reward-id)
-    (map-delete unspent-amounts-sbtc reward-id)
-    (ok true)
-  )
-)
-
 ;; used during reward distribution to improve performance
 (define-private (set-ctx-reward (reward-id uint))
-  (let (
-      (reward-details (unwrap! (map-get? rewards reward-id) err-not-found))
-      (last-commit (unwrap!
-        (contract-call? .pox4-self-service-multi get-last-aggregation
-          (get cycle reward-details)
-        )
-        err-not-found
-      ))
-      (id-header-hash (unwrap! (get-stacks-block-info? id-header-hash last-commit) err-not-found))
-    )
-    (var-set ctx-reward
-      (merge {
-        id-header-hash: id-header-hash,
-        reward-id: reward-id,
-      }
-        reward-details
-      ))
+  (let ((reward-details (unwrap! (map-get? rewards reward-id) ERR_NOT_FOUND)))
+    (var-set ctx-reward (merge { reward-id: reward-id } reward-details))
     (ok true)
   )
 )
@@ -224,11 +198,16 @@
 ;;
 
 ;; Security method: reward admin can withdraw sbtc from the contract unconditionally
-(define-public (withdraw-sbtc (amount uint))
+(define-private (withdraw-sbtc (amount uint))
   (let ((reward-admin tx-sender))
-    (asserts! (is-rewards-admin) err-forbidden)
+    (asserts! (is-rewards-admin) ERR_FORBIDDEN)
     ;; send with memo "withdraw" as ascii in hex
-    (as-contract (transfer-memo amount tx-sender reward-admin 0x7769746864726177))
+    (as-contract?
+      ((with-ft 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token "sbtc-token"
+        amount
+      ))
+      (try! (transfer-memo amount tx-sender reward-admin 0x7769746864726177))
+    )
   )
 )
 
@@ -238,45 +217,60 @@
     (cycle uint)
   )
   (begin
-    (asserts! (is-rewards-admin) err-forbidden)
-    (try! (transfer-memo amount tx-sender (as-contract tx-sender) 0x6465706f736974))
+    (try! (transfer-memo amount tx-sender current-contract 0x6465706f736974))
     (add-rewards amount cycle)
   )
 )
 
-(define-public (withdraw-rewards
-    (amount uint)
-    (reward-id uint)
-  )
-  (begin
-    (try! (withdraw-sbtc amount))
-    (remove-all-rewards reward-id)
+(define-public (withdraw-dust (reward-id uint))
+  (let (
+      (reserved-reward-balance (var-get reward-balance))
+      (unspent-sbtc (unwrap! (map-get? remaining-sbtc-by-reward-id reward-id) ERR_NOT_FOUND))
+      (reward-details (unwrap! (map-get? rewards reward-id) ERR_NOT_FOUND))
+      (reward-cycle-id (get cycle reward-details))
+      (current-cycle (/ (- burn-block-height (get first-burnchain-block-height POX_INFO))
+        (get reward-cycle-length POX_INFO)
+      ))
+    )
+    (asserts! (>= reserved-reward-balance unspent-sbtc) ERR_UNEXPECTED)
+    (asserts! (> current-cycle (+ u2 reward-cycle-id)) ERR_TOO_EARLY)
+    (and
+      (> unspent-sbtc u0)
+      (try! (withdraw-sbtc unspent-sbtc))
+    )
+    (var-set reward-balance (- reserved-reward-balance unspent-sbtc))
+    (ok true)
   )
 )
 
-;; Method 2: wrapped rewards are send to pool directly and
-;; allocated by the reward admin to the cycle
-(define-public (allocate-funds
-    (amount uint)
-    (cycle uint)
-  )
-  (begin
-    (asserts! (is-rewards-admin) err-forbidden)
-    (add-rewards amount cycle)
-  )
-)
-
-(define-public (desallocate-funds (reward-id uint))
-  (begin
-    (asserts! (is-rewards-admin) err-forbidden)
-    (remove-all-rewards reward-id)
+(define-public (withdraw-excess-sbtc)
+  (let (
+      (reward-admin tx-sender)
+      (reserved-reward-balance (var-get reward-balance))
+      (contract-balance (get-contract-balance-sbtc))
+      (excess (if (> contract-balance reserved-reward-balance)
+        (- contract-balance reserved-reward-balance)
+        u0
+      ))
+    )
+    (asserts! (is-rewards-admin) ERR_FORBIDDEN)
+    ;; send with memo "withdraw-excess" as ascii in hex
+    (asserts! (> excess u0) ERR_TOO_EARLY)
+    (as-contract?
+      ((with-ft 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token "sbtc-token"
+        excess
+      ))
+      (try! (transfer-memo excess current-contract reward-admin
+        0x77697468647261782d657863657373
+      ))
+    )
   )
 )
 
 ;; Change admin
 (define-public (set-rewards-admin (new-admin principal))
   (begin
-    (asserts! (is-rewards-admin) err-forbidden)
+    (asserts! (is-rewards-admin) ERR_FORBIDDEN)
     (ok (var-set rewards-admin new-admin))
   )
 )
@@ -288,33 +282,11 @@
 ;; TODO use mainnet implementation
 ;; for get-user-stacked
 
-(define-read-only (get-user-stacked
+(define-private (get-user-stacked
+    (cycle uint)
     (user principal)
-    (id-header-hash (buff 32))
   )
-  (get-user-stacked-dummy user id-header-hash)
-)
-
-(define-read-only (get-user-stacked-dummy
-    (user principal)
-    (id-header-hash (buff 32))
-  )
-  ;; (get locked (at-block id-header-hash (stx-account user))))
-  ;; DEBUG MODE
-  (if (is-eq user 'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG)
-    u250000000000000
-    (if (is-eq user 'ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC)
-      u500000000000000
-      u0
-    )
-  )
-)
-
-(define-read-only (get-user-stacked-testnet
-    (user principal)
-    (id-header-hash (buff 32))
-  )
-  (get locked (at-block id-header-hash (stx-account user)))
+  (contract-call? .pox4-self-service-multi-v2 get-user-stacked cycle user)
 )
 
 (define-read-only (calculate-share
@@ -329,22 +301,16 @@
 ;; TODO use mainnet implementation
 ;; for get-total-stacked
 ;;
-(define-public (get-total-stacked
-    (cycle-id uint)    
-  )
+(define-read-only (get-total-stacked (cycle-id uint))
   (get-total-stacked-dummy cycle-id)
 )
 
-(define-public (get-total-stacked-dummy
-    (cycle-id uint)
-  )
+(define-public (get-total-stacked-dummy (cycle-id uint))
   (ok (+ u250000000000000 u500000000000000))
 )
 
-(define-public (get-total-stacked-testnet
-    (cycle-id uint)
-  )
-  (ok (contract-call? .pox4-self-service-multi get-total-stacked cycle-id))
+(define-public (get-total-stacked-testnet (cycle-id uint))
+  (ok (contract-call? .pox4-self-service-multi-v2 get-total-stacked cycle-id))
 )
 
 (define-read-only (is-rewards-admin)
@@ -356,7 +322,7 @@
 )
 
 (define-read-only (get-unspent-balance (reward-id uint))
-  (map-get? unspent-amounts-sbtc reward-id)
+  (map-get? remaining-sbtc-by-reward-id reward-id)
 )
 
 (define-read-only (get-reward-details (reward-id uint))
