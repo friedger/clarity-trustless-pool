@@ -737,3 +737,21 @@
 (define-read-only (invariant-distribution-implies-stacked)
   (fold fuzz-check-distrib-delegated FUZZ_REWARD_IDS true)
 )
+
+;; [#env(simnet)]
+;; Cross-contract invariant 21: reserved rewards can never exceed sBTC
+;; actually held across the payout contract plus the deposit vault.
+;; Catches any accounting path that books rewards before their sBTC has
+;; arrived (or loses track of the balance owed by the vault to payout).
+(define-read-only (invariant-reward-balance-leq-system-sbtc)
+  (let (
+      (payout-balance (get-contract-balance-sbtc))
+      (vault-balance (unwrap!
+        (contract-call? 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token
+          get-balance-available .deposit-vault
+        ) false
+      ))
+    )
+    (<= (var-get reward-balance) (+ payout-balance vault-balance))
+  )
+)

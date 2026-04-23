@@ -1,0 +1,162 @@
+id: 0
+name: Simulated deployment, used as a default for `clarinet console`, `clarinet test` and `clarinet check`
+network: simnet
+genesis:
+  wallets:
+  - name: deployer
+    address: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: faucet
+    address: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_1
+    address: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_2
+    address: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_3
+    address: ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_4
+    address: ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_5
+    address: ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_6
+    address: ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_7
+    address: ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  - name: wallet_8
+    address: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+    balance: '100000000000000'
+    sbtc-balance: '1000000000'
+  contracts:
+  - genesis
+  - lockup
+  - bns
+  - cost-voting
+  - costs
+  - pox
+  - costs-2
+  - pox-2
+  - costs-3
+  - pox-3
+  - pox-4
+  - signers
+  - signers-voting
+  - costs-4
+plan:
+  batches:
+  - id: 0
+    transactions:
+    - transaction-type: emulated-contract-publish
+      contract-name: sbtc-registry
+      emulated-sender: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4
+      path: .cache/requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-registry.clar
+      clarity-version: 3
+    - transaction-type: emulated-contract-publish
+      contract-name: sbtc-token
+      emulated-sender: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4
+      path: .cache/requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token.clar
+      clarity-version: 3
+    - transaction-type: emulated-contract-publish
+      contract-name: sbtc-deposit
+      emulated-sender: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4
+      path: .cache/requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-deposit.clar
+      clarity-version: 3
+    - transaction-type: emulated-contract-publish
+      contract-name: pox4-multi-pool-v1
+      emulated-sender: SPMPMA1V6P430M8C91QS1G9XJ95S59JS1TZFZ4Q4
+      path: .cache/requirements/SPMPMA1V6P430M8C91QS1G9XJ95S59JS1TZFZ4Q4.pox4-multi-pool-v1.clar
+      clarity-version: 3
+    epoch: '3.0'
+  - id: 1
+    transactions:
+    - transaction-type: emulated-contract-publish
+      contract-name: pox4-self-service-multi-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/pox4-self-service-multi-v2.clar
+      clarity-version: 5
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST000000000000000000002AMW42H.pox-4
+      emulated-sender: ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+      method: allow-contract-caller
+      parameters:
+      - '''ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2'
+      - none
+    - transaction-type: emulated-contract-call
+      contract-id: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.pox4-self-service-multi-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      method: set-pool-pox-address-active
+      parameters:
+      - '{ hashbytes: 0x7321b74e2b6a7e949e6c4ad313035b1665095017, version: 0x00 }'
+    epoch: '3.4'

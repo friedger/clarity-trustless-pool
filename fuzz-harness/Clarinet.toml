@@ -1,0 +1,28 @@
+# Rendezvous-only Clarinet project for the pox4-self-service-multi-v2 fuzz.
+#
+# Isolated from the top-level project so clarinet-sdk's deployment plan
+# regeneration does not clobber the main project's default plan (both
+# would write to `deployments/default.simnet-plan.yaml`).
+#
+# Symlinks (contracts, settings, .cache) point at the parent project so
+# contract source stays authoritative in one place.
+#
+# Run with: `rv ./fuzz-harness pox4-self-service-multi-v2 invariant --dial=../scripts/fuzz-dialer-pool.cjs`
+
+[project]
+name = "fuzz-pool"
+description = "Rendezvous harness for pox4-self-service-multi-v2"
+authors = []
+telemetry = false
+cache_dir = "./.cache"
+
+requirements = [
+    {contract_id = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token"},
+    {contract_id = "SP000000000000000000002Q6VF78.pox-4"},
+    {contract_id = "SPMPMA1V6P430M8C91QS1G9XJ95S59JS1TZFZ4Q4.pox4-multi-pool-v1"}
+]
+
+[contracts.pox4-self-service-multi-v2]
+path = 'contracts/pox4-self-service-multi-v2.clar'
+clarity_version = 5
+epoch = "latest"
