@@ -68,7 +68,7 @@
     (receiver (optional principal))
   )
   (begin
-    (asserts! (is-eq tx-sender DEPLOYER) ERR_UNAUTHORIZED)
+    (asserts! (is-eq contract-caller DEPLOYER) ERR_UNAUTHORIZED)
     (as-contract? () (try! (contract-call? enroll-contract enroll receiver)))
   )
 )

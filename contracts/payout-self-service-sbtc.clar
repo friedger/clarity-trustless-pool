@@ -3,6 +3,7 @@
 (define-constant ERR_TOO_EARLY (err u500))
 (define-constant ERR_INSUFFICIENT_FUNDS (err u501))
 (define-constant ERR_INSUFFICIENT_REWARDS (err u502))
+(define-constant ERR_NO_STACKING (err u503))
 (define-constant ERR_UNEXPECTED (err u999))
 
 (define-constant POX_INFO (unwrap-panic (contract-call? 'ST000000000000000000002AMW42H.pox-4 get-pox-info)))
@@ -171,6 +172,7 @@
     )
     ;; amount must be less or equal than the unallocated balance
     (asserts! (<= new-reserved-balance balance) ERR_INSUFFICIENT_FUNDS)
+    (asserts! (> total-stacked u0) ERR_NO_STACKING)
     (var-set reward-balance new-reserved-balance)
     (var-set last-reward-id reward-id)
     (map-set remaining-sbtc-by-reward-id reward-id amount)
@@ -206,7 +208,7 @@
       ((with-ft 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token "sbtc-token"
         amount
       ))
-      (try! (transfer-memo amount tx-sender reward-admin 0x7769746864726177))
+      (try! (transfer-memo amount current-contract reward-admin 0x7769746864726177))
     )
   )
 )
@@ -238,6 +240,7 @@
       (> unspent-sbtc u0)
       (try! (withdraw-sbtc unspent-sbtc))
     )
+    (map-set remaining-sbtc-by-reward-id reward-id u0)
     (var-set reward-balance (- reserved-reward-balance unspent-sbtc))
     (ok true)
   )
@@ -341,4 +344,206 @@
     reward-id: reward-id,
     user: user,
   })
+)
+
+;;[#env(simnet)]
+;;
+;; Rendezvous invariants.
+;;;;
+
+;; Call-count map updated by Rendezvous after each public-function call.
+(define-map context
+  (string-ascii 100)
+  { called: uint }
+)
+;; [#env(simnet)]
+(define-public (update-context
+    (function-name (string-ascii 100))
+    (called uint)
+  )
+  (ok (map-set context function-name { called: called }))
+)
+;; [#env(simnet)]
+(define-constant FUZZ_REWARD_IDS (list
+  u1 u2 u3 u4 u5 u6 u7 u8 u9 u10 u11 u12 u13 u14 u15 u16 u17 u18 u19 u20 u21
+  u22 u23 u24 u25 u26 u27 u28 u29 u30 u31 u32 u33 u34 u35 u36 u37 u38 u39
+  u40 u41 u42 u43 u44 u45 u46 u47 u48 u49 u50 u51 u52 u53 u54 u55 u56 u57
+  u58 u59 u60 u61 u62 u63 u64 u65 u66 u67 u68 u69 u70 u71 u72 u73 u74 u75
+  u76 u77 u78 u79 u80 u81 u82 u83 u84 u85 u86 u87 u88 u89 u90 u91 u92 u93
+  u94 u95 u96 u97 u98 u99 u100
+))
+
+;; [#env(simnet)]
+;; Devnet deployer + wallet_1..wallet_8, the principals Rendezvous uses.
+(define-constant FUZZ_PRINCIPALS (list
+  'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+  'ST1SJ3DTE5DN7X54YDH5D64R3BCB6A2AG2ZQ8YPD5
+  'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG
+  'ST2JHG361ZXG51QTKY2NQCVBPPRRE2KZB1HR05NNC
+  'ST2NEB84ASENDXKYGJPQW86YXQCEFEX2ZQPG87ND
+  'ST2REHHS5J3CERCRBEPMGH7921Q6PYKAADT7JP2VB
+  'ST3AM1A56AK2C1XAFJ4115ZSV26EB49BVQ10MGCS0
+  'ST3PF13W7Z0RRM42A8VZRVFQ75SV1K26RXEP8YGKJ
+  'ST3NBRSFKX28FQ2ZJ1MAKX58HKHSDGNV5N7R21XCP
+))
+
+;; [#env(simnet)]
+(define-private (fuzz-sum-remaining
+    (rid uint)
+    (acc uint)
+  )
+  (+ acc (default-to u0 (map-get? remaining-sbtc-by-reward-id rid)))
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-sum-amount
+    (rid uint)
+    (acc uint)
+  )
+  (match (map-get? rewards rid)
+    r (+ acc (get amount-sbtc r))
+    acc
+  )
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-sum-distrib-user
+    (user principal)
+    (acc {
+      rid: uint,
+      sum: uint,
+    })
+  )
+  {
+    rid: (get rid acc),
+    sum: (+ (get sum acc)
+      (default-to u0
+        (map-get? distributions {
+          reward-id: (get rid acc),
+          user: user,
+        })
+      )),
+  }
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-distrib-sum-for-rid (rid uint))
+  (get sum
+    (fold fuzz-sum-distrib-user FUZZ_PRINCIPALS {
+      rid: rid,
+      sum: u0,
+    })
+  )
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-sum-distrib-for-rid
+    (rid uint)
+    (acc uint)
+  )
+  (+ acc (fuzz-distrib-sum-for-rid rid))
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-sum-stake-user
+    (user principal)
+    (acc {
+      cycle: uint,
+      sum: uint,
+    })
+  )
+  {
+    cycle: (get cycle acc),
+    sum: (+ (get sum acc)
+      (default-to u0
+        (contract-call? .pox4-self-service-multi-v2 get-user-stacked
+          (get cycle acc) user
+        ))
+    ),
+  }
+)
+
+;; [#env(simnet)]
+;; Invariant 2: reward-balance equals sum(remaining-sbtc-by-reward-id).
+;; Catches the withdraw-dust double-drain: repeated calls reduce reward-balance
+;; while leaving remaining-sbtc-by-reward-id untouched.
+(define-read-only (invariant-reward-balance-matches-remaining)
+  (is-eq (var-get reward-balance) (fold fuzz-sum-remaining FUZZ_REWARD_IDS u0))
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-distributed-matches
+    (rid uint)
+    (ok-so-far bool)
+  )
+  (and
+    ok-so-far
+    (match (map-get? rewards rid)
+      r (is-eq
+        (- (get amount-sbtc r)
+          (default-to u0 (map-get? remaining-sbtc-by-reward-id rid))
+        )
+        (fuzz-distrib-sum-for-rid rid)
+      )
+      true
+    )
+  )
+)
+
+;; [#env(simnet)]
+;; Invariant 3: for every reward-id, (amount-sbtc - remaining) equals the sum
+;; of distributions across the known principal set.
+(define-read-only (invariant-distributed-matches-distributions)
+  (fold fuzz-check-distributed-matches FUZZ_REWARD_IDS true)
+)
+
+;; [#env(simnet)]
+(define-private (fuzz-check-stake-sum-le-total
+    (rid uint)
+    (ok-so-far bool)
+  )
+  (if (not ok-so-far)
+    false
+    (match (map-get? rewards rid)
+      r (<=
+        (get sum
+          (fold fuzz-sum-stake-user FUZZ_PRINCIPALS {
+            cycle: (get cycle r),
+            sum: u0,
+          })
+        )
+        (get total-stacked r)
+      )
+      true
+    )
+  )
+)
+
+;; [#env(simnet)]
+;; Invariant 6: for every reward-id, sum of per-user stake for its cycle is
+;; <= the total-stacked snapshot captured when the reward was created.
+(define-read-only (invariant-user-stake-sum-le-total)
+  (fold fuzz-check-stake-sum-le-total FUZZ_REWARD_IDS true)
+)
+
+;; [#env(simnet)]
+;; Invariant 19: whole-system sBTC conservation for the payout contract.
+;;   sum(rewards.amount-sbtc) == sum(remaining) + sum(distributions)
+;; Holds only when no admin-side withdrawal has happened in the trace:
+;; withdraw-dust and withdraw-excess-sbtc drain funds without touching the
+;; per-reward amount / remaining / distributions bookkeeping. The `context`
+;; gate skips the check once either has been called.
+(define-read-only (invariant-sbtc-conservation)
+  (let (
+      (dust-called (default-to u0 (get called (map-get? context "withdraw-dust"))))
+      (excess-called (default-to u0 (get called (map-get? context "withdraw-excess-sbtc"))))
+    )
+    (if (or (> dust-called u0) (> excess-called u0))
+      true
+      (is-eq (fold fuzz-sum-amount FUZZ_REWARD_IDS u0)
+        (+ (fold fuzz-sum-remaining FUZZ_REWARD_IDS u0)
+          (fold fuzz-sum-distrib-for-rid FUZZ_REWARD_IDS u0)
+        ))
+    )
+  )
 )

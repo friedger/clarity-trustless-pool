@@ -146,7 +146,15 @@
     (match (contract-call? 'ST000000000000000000002AMW42H.pox-4 delegate-stack-stx user
       amount-ustx pox-address start-burn-ht u1
     )
-      stacker-details (ok stacker-details)
+      stacker-details (begin
+        (map-set locked {
+          cycle: (current-pox-reward-cycle),
+          stacker: user,
+        }
+          amount-ustx
+        )
+        (ok stacker-details)
+      )
       error (if (is-eq error 3) ;; check whether user is already stacked
         (delegate-stack-extend-increase user amount-ustx pox-address)
         (err (* u1000 (to-uint error)))

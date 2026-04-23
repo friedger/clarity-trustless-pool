@@ -90,6 +90,63 @@ operation is:
 Every step after the user's initial `delegate-stx` is permissionless — the
 contract, not any operator, enforces correctness.
 
+## Reward distribution — happy path
+
+Given one or more registered rewards (a reward-id returned from
+`deposit-rewards`), distribution streams the per-user share out of the payout
+contract's sBTC balance. Any principal can drive this; operators are a
+convenience, not a trust anchor.
+
+1. **Anchor the reward.** sBTC lands in the payout contract — typically
+   forwarded from `deposit-vault` by anyone calling `deposit-vault.transfer`
+   during the prepare phase (or when the vault's balance crosses
+   `INTERMED_MINIMUM`). That call chains into
+   `payout-self-service-sbtc.deposit-rewards(amount, cycle)`, which:
+   - runs the SIP-010 sBTC transfer into the contract,
+   - bumps `last-reward-id` and writes a new `rewards[reward-id]` entry with
+     `{ cycle, amount-sbtc, total-stacked }`,
+   - seeds `remaining-sbtc-by-reward-id[reward-id] = amount`,
+   - adds `amount` to `reward-balance`,
+   - and returns `(ok reward-id)`.
+2. **Distribute to a single user.** A bot or user calls
+   `distribute-rewards(user, reward-id)`. Internally the contract sets
+   `ctx-reward` for the reward, reads the user's stake from the pool contract
+   via `get-user-stacked(cycle, user)`, computes
+   `share = floor(amount-sbtc * user-stacked / total-stacked)`, and transfers
+   the share as sBTC via `as-contract? (with-ft sbtc-token "sbtc-token" share)`.
+   It records the payout in `distributions[{ reward-id, user }]`, debits
+   `reward-balance` and the reward's `remaining-sbtc-by-reward-id` entry, and
+   returns `(ok true)`.
+3. **Distribute to many users.** `distribute-rewards-many(users, reward-id)`
+   folds the same logic over up to 200 principals in one transaction — useful
+   for bots draining a reward in a single tx.
+4. **Reclaim residual dust.** After two full cycles have elapsed past the
+   reward's cycle, the rewards admin calls `withdraw-dust(reward-id)` and the
+   untouched remainder is transferred to the admin.
+5. **(Optional) recover accidental sBTC.** sBTC sent to the payout contract
+   without going through `deposit-rewards` — or the stray sats that don't land
+   in `reward-balance` for any reason — is always recoverable by the admin
+   via `withdraw-excess-sbtc`. Reserved rewards are never drained by this path.
+
+## Reward distribution — unhappy paths
+
+| Path | Trigger | Outcome |
+| --- | --- | --- |
+| Unknown reward-id | `distribute-rewards*(user, 999)` where 999 has never been registered | `(err u404)` `ERR_NOT_FOUND`. No sBTC moves. |
+| User not in cycle snapshot | `distribute-rewards(user, id)` for a user whose `{ cycle, stacker }` entry was never written in `pox4-self-service-multi-v2.locked` | `share = 0`. The function returns `(ok true)`, fires no `ft_transfer_event`, and does **not** write a `distributions` entry. Replays are idempotent no-ops. |
+| Repeat distribute for the same user | `distribute-rewards(user, id)` a second time | `(ok true)` — the `is-none (map-get? distributions …)` guard short-circuits before the transfer; no event, no balance change. |
+| Insufficient unspent for reward | Somehow the per-reward ledger has been drained below the computed share | `(err u501)` `ERR_INSUFFICIENT_FUNDS`. Should not happen in normal operation; guards against accounting drift. |
+| Insufficient global reserve | `reward-balance < share` | `(err u502)` `ERR_INSUFFICIENT_REWARDS`. Same guard against drift. |
+| `deposit-rewards` too early | Called before the end of the target cycle's reward phase (`burn-block-height ≤ cycle_end - prepare_length`) | `(err u500)` `ERR_TOO_EARLY`. Prevents registering a reward for a cycle that is still running. |
+| `deposit-rewards` for unfunded caller | Caller doesn't hold `amount` sBTC | The inner SIP-010 transfer fails; the outer `try!` propagates that error. No reward is registered. |
+| `withdraw-dust` too early | Called before `current-cycle > reward-cycle + 2` | `(err u500)` `ERR_TOO_EARLY`. |
+| `withdraw-dust` for unknown reward-id | Reward never registered | `(err u404)` `ERR_NOT_FOUND`. |
+| `withdraw-dust` by non-admin (dust > 0) | Inner `withdraw-sbtc` asserts `is-rewards-admin` | `(err u403)` `ERR_FORBIDDEN`. |
+| `withdraw-dust` double-call | Second call with the same reward-id | `(err u999)` `ERR_UNEXPECTED` — the `reserved-reward-balance >= unspent-sbtc` guard underflows. |
+| `withdraw-excess-sbtc` when no excess | `contract-balance ≤ reward-balance` | `(err u500)` `ERR_TOO_EARLY`. |
+| `withdraw-excess-sbtc` by non-admin | Caller is not the current `rewards-admin` | `(err u403)` `ERR_FORBIDDEN`. `reward-balance` is never touched even if the caller holds admin on another contract. |
+| `set-rewards-admin` by non-admin | Non-admin rotation attempt | `(err u403)` `ERR_FORBIDDEN`. |
+
 ## Payout math and dust handling
 
 A user's share of a reward is:
@@ -226,6 +283,30 @@ clarinet deployment apply deployments/0-init.yaml
 clarinet deployment apply deployments/1-alice-delegate.devnet-plan.yaml
 # ...
 ```
+
+### Stxer simulations
+
+`stxer` lets you trace a transaction sequence against real mainnet state. The
+reward-distribution simulations deploy the three first-party contracts fresh
+and seed the pool's per-cycle snapshot + the payout contract's reward
+bookkeeping directly (bypassing the full delegate-stx / commit flow), so the
+distribute and withdraw paths are isolated and easy to read.
+
+Each script prints a `stxer.xyz/simulations/mainnet/{id}` URL when it
+completes.
+
+```bash
+pnpm sim:distribute:happy    # two stackers claim; 1 sat of dust remains
+pnpm sim:distribute:no-stake # user not in the locked snapshot → zero-share no-op
+pnpm sim:distribute:errors   # unknown reward-id, too-early, non-admin, no-excess
+pnpm sim:distribute:dust     # admin reclaims dust past cycle+2; double-call rejected
+pnpm sim:distribute:excess   # non-admin blocked; admin pulls excess; reserved untouched
+```
+
+The dust simulation uses a block height past `target_cycle + 2` so the
+cooldown gate opens; the others use `target_cycle + 1` so the gate is still
+closed (which is how the errors simulation demonstrates `ERR_TOO_EARLY` on
+`withdraw-dust`).
 
 ### Signature generation
 
